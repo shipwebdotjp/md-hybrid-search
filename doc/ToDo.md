@@ -34,11 +34,11 @@
 - [X] FTS 用の正規化テキストと query 正規化を実装する
 
 ## 4. Embedding
-- [ ] 呼び出し元から渡された embedder で document embedding を生成する
-- [ ] query embedding を生成する
-- [ ] embedding dimension の整合性をチェックする
-- [ ] embedding 生成失敗時の例外伝播方針を実装する
-- [ ] embedding cache を作らない方針を反映する
+- [x] 呼び出し元から渡された embedder で document embedding を生成する
+- [x] query embedding を生成する
+- [x] embedding dimension の整合性をチェックする
+- [x] embedding 生成失敗時の例外伝播方針を実装する
+- [x] embedding cache を作らない方針を反映する
 
 ## 5. Sync 処理
 - [ ] source 配下を再帰スキャンする処理を実装する

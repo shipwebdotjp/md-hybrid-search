@@ -68,6 +68,8 @@ class SearchIndex:
         self.embedder = embedder
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
+        # This tracks the observed embedding dimension for validation only.
+        self._embedding_dim: Optional[int] = None
 
         # Initialize database
         self.db = Database(sqlite_path)
@@ -136,6 +138,56 @@ class SearchIndex:
 
         # Remove sources that are no longer in the list for this collection
         self.db.delete_sources_except(self.collection_name, active_paths)
+
+    def _declared_embedding_dim(self) -> Optional[int]:
+        for attr in ("embedding_dim", "dim"):
+            value = getattr(self.embedder, attr, None)
+            if isinstance(value, int) and value > 0:
+                return value
+        return None
+
+    def _record_embedding_dim(self, observed_dim: int) -> int:
+        if observed_dim <= 0:
+            raise ValueError("Embedding dimension must be a positive integer")
+
+        declared_dim = self._declared_embedding_dim()
+        expected_dim = declared_dim if declared_dim is not None else self._embedding_dim
+
+        if expected_dim is None:
+            self._embedding_dim = observed_dim
+            return observed_dim
+
+        if observed_dim != expected_dim:
+            raise ValueError(
+                f"Embedding dimension mismatch: expected {expected_dim}, got {observed_dim}"
+            )
+
+        self._embedding_dim = expected_dim
+
+        return expected_dim
+
+    def _embed_documents(self, texts: List[str]) -> List[List[float]]:
+        if not texts:
+            return []
+
+        embeddings = list(self.embedder.embed_documents(texts))
+        if len(embeddings) != len(texts):
+            raise ValueError(
+                f"embed_documents returned {len(embeddings)} embeddings for {len(texts)} texts"
+            )
+
+        normalized_embeddings: List[List[float]] = []
+        for embedding in embeddings:
+            vector = list(embedding)
+            self._record_embedding_dim(len(vector))
+            normalized_embeddings.append(vector)
+
+        return normalized_embeddings
+
+    def _embed_query(self, text: str) -> List[float]:
+        embedding = list(self.embedder.embed_query(text))
+        self._record_embedding_dim(len(embedding))
+        return embedding
 
     def _validate_collection_name(self, name: str):
         if not (3 <= len(name) <= 63):
@@ -222,6 +274,9 @@ class SearchIndex:
         if mode not in valid_modes:
             raise ValueError(f"Invalid mode: {mode}. Must be one of {valid_modes}")
 
+        if mode in ("similarity", "hybrid"):
+            self._embed_query(query)
+
         return []
 
     def rebuild(self) -> SyncReport:
@@ -243,7 +298,7 @@ class SearchIndex:
 
         raw_chunks = processor.chunk_text(content, self.chunk_size, self.chunk_overlap)
 
-        chunks = []
+        chunk_specs = []
         for i, text in enumerate(raw_chunks):
             chunk_id = processor.generate_chunk_id(
                 self.collection_name, file_path, i, content_hash
@@ -257,13 +312,22 @@ class SearchIndex:
                 "mtime": mtime,
                 "content_hash": content_hash,
             }
-            chunks.append(processor.Chunk(
-                chunk_id=chunk_id,
-                content=text,
-                content_hash=content_hash,
-                chunk_index=i,
-                metadata=metadata
-            ))
+            chunk_specs.append((chunk_id, text, metadata, i))
+
+        embeddings = self._embed_documents([text for _, text, _, _ in chunk_specs])
+
+        chunks = []
+        for (chunk_id, text, metadata, i), embedding in zip(chunk_specs, embeddings):
+            chunks.append(
+                processor.Chunk(
+                    chunk_id=chunk_id,
+                    content=text,
+                    content_hash=content_hash,
+                    chunk_index=i,
+                    metadata=metadata,
+                    embedding=embedding,
+                )
+            )
         return chunks
 
     def clear(self) -> None:

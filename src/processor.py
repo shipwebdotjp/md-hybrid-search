@@ -1,7 +1,7 @@
 import hashlib
 import re
 import json
-from typing import List, Any
+from typing import List, Any, Optional
 from dataclasses import dataclass, asdict
 
 @dataclass(frozen=True)
@@ -11,6 +11,7 @@ class Chunk:
     content_hash: str
     chunk_index: int
     metadata: dict[str, Any]
+    embedding: Optional[List[float]] = None
 
 def load_markdown(filepath: str) -> str:
     """Reads a Markdown file in UTF-8. YAML frontmatter is included in the body."""
