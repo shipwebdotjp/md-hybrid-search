@@ -1,6 +1,6 @@
 import os
 import pytest
-from src.processor import load_markdown, chunk_text, generate_chunk_id, normalize_text
+from src.processor import load_markdown, chunk_text, generate_chunk_id, normalize_text, Chunk
 
 def test_load_markdown(tmp_path):
     content = "---\ntitle: Test\n---\nBody content."
@@ -18,11 +18,6 @@ def test_chunk_text():
     assert chunks == ["abc", "def", "ghi", "j"]
 
     # With overlap
-    # 0:3 -> abc
-    # (3-1):5 -> cde
-    # (5-1):7 -> efg
-    # (7-1):9 -> ghi
-    # (9-1):11 -> ij
     chunks = chunk_text(text, chunk_size=3, chunk_overlap=1)
     assert chunks == ["abc", "cde", "efg", "ghi", "ij"]
 
@@ -58,3 +53,14 @@ def test_normalize_text():
     text_cjk = "こんにちは  世界\nHello WORLD"
     normalized_cjk = normalize_text(text_cjk)
     assert normalized_cjk == "こんにちは 世界 hello world"
+
+def test_chunk_dataclass():
+    c = Chunk(
+        chunk_id="id1",
+        content="content",
+        content_hash="hash",
+        chunk_index=0,
+        metadata={"key": "value"}
+    )
+    assert c.chunk_id == "id1"
+    assert c.metadata["key"] == "value"

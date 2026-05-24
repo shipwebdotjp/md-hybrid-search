@@ -1,7 +1,16 @@
 import hashlib
 import re
-from typing import List
-from pathlib import Path
+import json
+from typing import List, Any
+from dataclasses import dataclass, asdict
+
+@dataclass(frozen=True)
+class Chunk:
+    chunk_id: str
+    content: str
+    content_hash: str
+    chunk_index: int
+    metadata: dict[str, Any]
 
 def load_markdown(filepath: str) -> str:
     """Reads a Markdown file in UTF-8. YAML frontmatter is included in the body."""
@@ -37,9 +46,16 @@ def chunk_text(text: str, chunk_size: int, chunk_overlap: int) -> List[str]:
 def generate_chunk_id(collection_name: str, file_path: str, chunk_index: int, content_hash: str) -> str:
     """
     Generates a deterministic chunk_id from collection_name, file_path, chunk_index, and content_hash.
+    Uses JSON serialization to avoid collisions.
     """
-    data = f"{collection_name}|{file_path}|{chunk_index}|{content_hash}"
-    return hashlib.sha256(data.encode()).hexdigest()
+    data = {
+        "collection_name": collection_name,
+        "file_path": file_path,
+        "chunk_index": chunk_index,
+        "content_hash": content_hash
+    }
+    serialized = json.dumps(data, sort_keys=True)
+    return hashlib.sha256(serialized.encode()).hexdigest()
 
 def normalize_text(text: str) -> str:
     """

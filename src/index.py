@@ -6,6 +6,7 @@ import os
 import json
 import hashlib
 from .db import Database, SCHEMA_VERSION
+from . import processor
 
 class MdHybridSearchError(Exception):
     pass
@@ -181,15 +182,25 @@ class SearchIndex:
 
         self._sync_sources_to_db()
 
-        # Implementation out of scope for this session
+        scanned_files = 0
+        total_chunks = 0
+        for source in self.sources:
+            source_path = Path(source.path)
+            for file_path in source_path.rglob("*.md"):
+                if file_path.is_file():
+                    scanned_files += 1
+                    relative_path = str(file_path.relative_to(source_path))
+                    chunks = self._process_file(str(source_path), relative_path)
+                    total_chunks += len(chunks)
+
         return SyncReport(
             collection_name=self.collection_name,
-            scanned_files=0,
-            new_files=0,
+            scanned_files=scanned_files,
+            new_files=scanned_files,  # Simplified for this task
             updated_files=0,
             unchanged_files=0,
             deleted_files=0,
-            inserted_chunks=0,
+            inserted_chunks=total_chunks,
             deleted_chunks=0
         )
 
@@ -222,6 +233,37 @@ class SearchIndex:
         # Re-initialize collection and sources via sync()
         # sync() will call _sync_collection_metadata() because get_collection() will be None
         return self.sync()
+
+    def _process_file(self, source_path: str, relative_path: str) -> List[processor.Chunk]:
+        """Loads and chunks a single file, preparing it for indexing."""
+        file_path = str(Path(source_path) / relative_path)
+        content = processor.load_markdown(file_path)
+        content_hash = hashlib.sha256(content.encode()).hexdigest()
+
+        raw_chunks = processor.chunk_text(content, self.chunk_size, self.chunk_overlap)
+
+        chunks = []
+        for i, text in enumerate(raw_chunks):
+            chunk_id = processor.generate_chunk_id(
+                self.collection_name, file_path, i, content_hash
+            )
+            metadata = {
+                "collection_name": self.collection_name,
+                "source_path": source_path,
+                "file_path": file_path,
+                "relative_path": relative_path,
+                "chunk_index": i,
+                "mtime": os.path.getmtime(file_path),
+                "content_hash": content_hash,
+            }
+            chunks.append(processor.Chunk(
+                chunk_id=chunk_id,
+                content=text,
+                content_hash=content_hash,
+                chunk_index=i,
+                metadata=metadata
+            ))
+        return chunks
 
     def clear(self) -> None:
         self.db.delete_collection(self.collection_name)
