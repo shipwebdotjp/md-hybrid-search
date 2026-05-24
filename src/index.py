@@ -68,8 +68,6 @@ class SearchIndex:
         # Upsert collection and metadata
         self._sync_collection_metadata()
 
-        # NOTE: _sync_sources_to_db() is moved to sync() to avoid destructive operations during init.
-
     def _get_embedder_fingerprint(self) -> str:
         # Gather properties for a deterministic fingerprint
         props = {
@@ -145,13 +143,17 @@ class SearchIndex:
 
         return sorted_sources
 
-    def sync(self) -> SyncReport:
+    def _validate_source_existence(self):
         if not self.sources:
             raise ValueError("sources cannot be empty for sync()")
 
         for source in self.sources:
             if not Path(source.path).exists():
                 raise FileNotFoundError(f"Source path does not exist: {source.path}")
+
+    def sync(self) -> SyncReport:
+        # Validate first, before mutating the DB
+        self._validate_source_existence()
 
         # Sync sources to DB now that we're actually syncing
         self._sync_sources_to_db()
@@ -188,7 +190,10 @@ class SearchIndex:
         return []
 
     def rebuild(self) -> SyncReport:
-        # Sync sources to DB for rebuild too
+        # Validate first
+        self._validate_source_existence()
+
+        # Sync sources to DB for rebuild
         self._sync_sources_to_db()
         # Implementation out of scope for this session
         return self.sync()

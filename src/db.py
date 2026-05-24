@@ -104,6 +104,14 @@ class Database:
         # Check if schema_meta table exists
         cursor = self.conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='schema_meta'")
         if not cursor.fetchone():
+            # If schema_meta is missing, ensure the DB is empty.
+            # If it's not empty, it might be a legacy DB without schema_meta.
+            cursor = self.conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
+            if cursor.fetchone():
+                 raise RuntimeError(
+                    "Existing database found without schema version information. "
+                    "To prevent corruption, automatic initialization is blocked. Please rebuild the index."
+                )
             return
 
         cursor = self.conn.execute("SELECT value FROM schema_meta WHERE key = 'schema_version'")
