@@ -3,6 +3,8 @@ from pathlib import Path
 from typing import Protocol, List, Optional, Any, Literal
 import re
 import os
+import json
+from .db import Database, SCHEMA_VERSION
 
 @dataclass(frozen=True)
 class DirectorySource:
@@ -58,6 +60,43 @@ class SearchIndex:
         self.embedder = embedder
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
+
+        # Initialize database
+        self.db = Database(sqlite_path)
+
+        # Upsert collection and metadata
+        self._sync_collection_metadata()
+
+        # Sync sources in DB
+        self._sync_sources_to_db()
+
+    def _get_embedder_fingerprint(self) -> str:
+        # Use class name as fingerprint for now
+        return self.embedder.__class__.__name__
+
+    def _get_tokenizer_fingerprint(self) -> str:
+        # Placeholder for tokenizer fingerprint
+        return "standard"
+
+    def _sync_collection_metadata(self):
+        metadata = {
+            "chunk_size": self.chunk_size,
+            "chunk_overlap": self.chunk_overlap,
+            "embedder_fingerprint": self._get_embedder_fingerprint(),
+            "tokenizer_fingerprint": self._get_tokenizer_fingerprint(),
+            "schema_version": SCHEMA_VERSION,
+        }
+        self.db.upsert_collection(self.collection_name, json.dumps(metadata))
+
+    def _sync_sources_to_db(self):
+        # Add current sources
+        active_paths = []
+        for source in self.sources:
+            self.db.upsert_source(self.collection_name, source.path)
+            active_paths.append(source.path)
+
+        # Remove sources that are no longer in the list for this collection
+        self.db.delete_sources_except(self.collection_name, active_paths)
 
     def _validate_collection_name(self, name: str):
         # collection_name rules:

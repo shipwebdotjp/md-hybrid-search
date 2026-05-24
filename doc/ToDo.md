@@ -16,12 +16,12 @@
 - [ ] `search()` の `query` / `limit` / `mode` バリデーションを実装する
 
 ## 2. SQLite スキーマと永続化
-- [ ] SQLite 接続処理を実装する
-- [ ] `schema_meta` / `collections` / `sources` / `files` / `chunks` / `chunks_fts` を設計・実装する
-- [ ] collection metadata に `chunk_size` / `chunk_overlap` / `embedder_fingerprint` / `tokenizer_fingerprint` / `schema_version` を保存する
-- [ ] schema version の保存と互換性チェックを実装する
-- [ ] 自動 migration を行わない方針を実装する
-- [ ] collection / source / file / chunk の CRUD を実装する
+- [x] SQLite 接続処理を実装する
+- [x] `schema_meta` / `collections` / `sources` / `files` / `chunks` / `chunks_fts` を設計・実装する
+- [x] collection metadata に `chunk_size` / `chunk_overlap` / `embedder_fingerprint` / `tokenizer_fingerprint` / `schema_version` を保存する
+- [x] schema version の保存と互換性チェックを実装する
+- [x] 自動 migration を行わない方針を実装する
+- [x] collection / source / file / chunk の CRUD を実装する
 
 ## 3. Markdown 読み込み・Chunking
 - [ ] Markdown を UTF-8 で読み込む処理を実装する
