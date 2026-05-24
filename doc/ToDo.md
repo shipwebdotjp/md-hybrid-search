@@ -1,19 +1,19 @@
 # md-hybrid-search 実装 ToDo
 
 ## 1. 公開 API と入力バリデーション
-- [ ] `DirectorySource` を定義する
-- [ ] `Embedder` protocol を定義する
-- [ ] `SearchIndex` のコンストラクタ引数を確定する
-- [ ] `sync()` / `search()` の公開インターフェースを確定する
-- [ ] `rebuild()` / `clear()` の公開インターフェースを確定する
-- [ ] `SyncReport` / `SearchHit` の戻り値型を定義する
-- [ ] `collection_name` のバリデーションを実装する
-- [ ] `DirectorySource.path` の正規化を実装する
-- [ ] 同一 source の重複除去を実装する
-- [ ] 親子関係にある source を `ValueError` にする
-- [ ] `sync()` の `sources` 空指定を `ValueError` にする
-- [ ] `sync()` の存在しない source を `FileNotFoundError` にする
-- [ ] `search()` の `query` / `limit` / `mode` バリデーションを実装する
+- [x] `DirectorySource` を定義する
+- [x] `Embedder` protocol を定義する
+- [x] `SearchIndex` のコンストラクタ引数を確定する
+- [x] `sync()` / `search()` の公開インターフェースを確定する
+- [x] `rebuild()` / `clear()` の公開インターフェースを確定する
+- [x] `SyncReport` / `SearchHit` の戻り値型を定義する
+- [x] `collection_name` のバリデーションを実装する
+- [x] `DirectorySource.path` の正規化を実装する
+- [x] 同一 source の重複除去を実装する
+- [x] 親子関係にある source を `ValueError` にする
+- [x] `sync()` の `sources` 空指定を `ValueError` にする
+- [x] `sync()` の存在しない source を `FileNotFoundError` にする
+- [x] `search()` の `query` / `limit` / `mode` バリデーションを実装する
 
 ## 2. SQLite スキーマと永続化
 - [x] SQLite 接続処理を実装する
@@ -24,14 +24,14 @@
 - [x] collection / source / file / chunk の CRUD を実装する
 
 ## 3. Markdown 読み込み・Chunking
-- [ ] Markdown を UTF-8 で読み込む処理を実装する
-- [ ] Markdown をプレーンテキストとして固定長 chunk に分割する処理を実装する
-- [ ] `chunk_size` / `chunk_overlap` を反映する
-- [ ] YAML frontmatter を本文に含める
-- [ ] heading-aware chunking を行わない
-- [ ] `chunk_id` を `collection_name` / `file_path` / `chunk_index` / `content_hash` から決定的に生成する
-- [ ] chunk に必要なメタデータを定義する
-- [ ] FTS 用の正規化テキストと query 正規化を実装する
+- [x] Markdown を UTF-8 で読み込む処理を実装する
+- [x] Markdown をプレーンテキストとして固定長 chunk に分割する処理を実装する
+- [x] `chunk_size` / `chunk_overlap` を反映する
+- [x] YAML frontmatter を本文に含める
+- [x] heading-aware chunking を行わない
+- [x] `chunk_id` を `collection_name` / `file_path` / `chunk_index` / `content_hash` から決定的に生成する
+- [x] chunk に必要なメタデータを定義する
+- [X] FTS 用の正規化テキストと query 正規化を実装する
 
 ## 4. Embedding
 - [ ] 呼び出し元から渡された embedder で document embedding を生成する
