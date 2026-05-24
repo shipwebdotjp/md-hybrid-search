@@ -24,6 +24,8 @@ def chunk_text(text: str, chunk_size: int, chunk_overlap: int) -> List[str]:
     """
     if chunk_size <= 0:
         raise ValueError("chunk_size must be positive")
+    if chunk_overlap < 0:
+        raise ValueError("chunk_overlap must be non-negative")
     if chunk_overlap >= chunk_size:
         raise ValueError("chunk_overlap must be less than chunk_size")
 

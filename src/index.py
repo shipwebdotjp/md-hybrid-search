@@ -186,7 +186,7 @@ class SearchIndex:
         total_chunks = 0
         for source in self.sources:
             source_path = Path(source.path)
-            for file_path in source_path.rglob("*.md"):
+            for file_path in sorted(source_path.rglob("*.md"), key=str):
                 if file_path.is_file():
                     scanned_files += 1
                     relative_path = str(file_path.relative_to(source_path))
@@ -239,6 +239,7 @@ class SearchIndex:
         file_path = str(Path(source_path) / relative_path)
         content = processor.load_markdown(file_path)
         content_hash = hashlib.sha256(content.encode()).hexdigest()
+        mtime = os.path.getmtime(file_path)
 
         raw_chunks = processor.chunk_text(content, self.chunk_size, self.chunk_overlap)
 
@@ -253,7 +254,7 @@ class SearchIndex:
                 "file_path": file_path,
                 "relative_path": relative_path,
                 "chunk_index": i,
-                "mtime": os.path.getmtime(file_path),
+                "mtime": mtime,
                 "content_hash": content_hash,
             }
             chunks.append(processor.Chunk(

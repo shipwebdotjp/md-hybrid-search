@@ -35,6 +35,8 @@ def test_chunk_text_errors():
         chunk_text("abc", 10, 10)
     with pytest.raises(ValueError):
         chunk_text("abc", 10, 11)
+    with pytest.raises(ValueError):
+        chunk_text("abc", 2, -1)
 
 def test_generate_chunk_id():
     id1 = generate_chunk_id("coll", "/path/file.md", 0, "hash1")
