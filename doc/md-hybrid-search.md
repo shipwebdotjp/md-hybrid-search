@@ -806,10 +806,10 @@ results = index.search("検索クエリ", limit=10)
 
 これは現行実装の参照メモであり、仕様の優先順位は上の章が上である。
 
-- 差分スキャン: 既存の `src/loader/FileIndex.py` でファイルテーブル管理
-- チャンク化・埋め込み投入: `src/loader/custom_directory_loader.py` でディレクトリのファイルリストを取得し、`src/loader/custom_file_loader.py` でファイルタイプ別にローダー呼び出し、`src/loader/custom_text_loader.py` で Markdown をロードしている
-- SQLite FTS5 によるチャンク保存: `src/loader/CustomFileLoader.py` にある `ChromaFTSWrapper` で ChromaDB へのドキュメント追加と FTS5 同期を行っている
-- FTS 管理: `src/search/fts_index.py`、`src/search/fts_sync.py`、`src/search/mecab_tokenizer.py`
-- ハイブリッド検索: `src/search/hybrid_search.py`
-- reranker: `src/search/reranker.py`
+- 差分スキャン: 既存の `src/md-hybrid-search/loader/FileIndex.py` でファイルテーブル管理
+- チャンク化・埋め込み投入: `src/md-hybrid-search/loader/custom_directory_loader.py` でディレクトリのファイルリストを取得し、`src/md-hybrid-search/loader/custom_file_loader.py` でファイルタイプ別にローダー呼び出し、`src/md-hybrid-search/loader/custom_text_loader.py` で Markdown をロードしている
+- SQLite FTS5 によるチャンク保存: `src/md-hybrid-search/loader/CustomFileLoader.py` にある `ChromaFTSWrapper` で ChromaDB へのドキュメント追加と FTS5 同期を行っている
+- FTS 管理: `src/md-hybrid-search/search/fts_index.py`、`src/md-hybrid-search/search/fts_sync.py`、`src/md-hybrid-search/search/mecab_tokenizer.py`
+- ハイブリッド検索: `src/md-hybrid-search/search/hybrid_search.py`
+- reranker: `src/md-hybrid-search/search/reranker.py`
 
