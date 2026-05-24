@@ -1,7 +1,14 @@
 ## 仕様
 以下を参照してから実装すること
 [プロジェクトに関わる仕様](./doc/md-hybrid-search.md)
+
+## ToDoリスト
+実装はToDoリストに従って実装する。実装が終わったら、ToDoリストの実装済みの項目にチェックを入れる。
 [ToDo](./doc/ToDo.md)
+
+## 判断・変更履歴
+重大なアーキテクチャ決定は doc/architecture-decision-record に`ADR-xxx-slug.md`のファイル名で履歴を残す。
+ADRを書くほどではない小さな判断は`doc/decisions.log.md`に追記していく。
 
 ### 開発方針
 MVP、v0、個人用のプロジェクトとして、シンプルでミニマルな実装を優先する。
