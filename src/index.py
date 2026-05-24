@@ -7,6 +7,12 @@ import json
 import hashlib
 from .db import Database, SCHEMA_VERSION
 
+class MdHybridSearchError(Exception):
+    pass
+
+class ConfigMismatchError(MdHybridSearchError):
+    pass
+
 @dataclass(frozen=True)
 class DirectorySource:
     path: str
@@ -65,9 +71,6 @@ class SearchIndex:
         # Initialize database
         self.db = Database(sqlite_path)
 
-        # Upsert collection and metadata
-        self._sync_collection_metadata()
-
     def _get_embedder_fingerprint(self) -> str:
         # Gather properties for a deterministic fingerprint
         props = {
@@ -81,13 +84,37 @@ class SearchIndex:
 
     def _get_tokenizer_fingerprint(self) -> str:
         # Gather properties for a deterministic fingerprint
-        # Since tokenizer is internal and not yet fully exposed, we use placeholder logic for now.
         props = {
             "name": "standard",
             "version": "v1"
         }
         serialized = json.dumps(props, sort_keys=True)
         return hashlib.sha256(serialized.encode()).hexdigest()
+
+    def _check_config_mismatch(self):
+        coll_data = self.db.get_collection(self.collection_name)
+        if not coll_data:
+            return
+
+        stored_meta = json.loads(coll_data["metadata_json"])
+        current_meta = {
+            "chunk_size": self.chunk_size,
+            "chunk_overlap": self.chunk_overlap,
+            "embedder_fingerprint": self._get_embedder_fingerprint(),
+            "tokenizer_fingerprint": self._get_tokenizer_fingerprint(),
+            "schema_version": SCHEMA_VERSION,
+        }
+
+        mismatches = []
+        for key in ["chunk_size", "chunk_overlap", "embedder_fingerprint", "tokenizer_fingerprint"]:
+            if stored_meta.get(key) != current_meta.get(key):
+                mismatches.append(f"{key} (stored: {stored_meta.get(key)}, current: {current_meta.get(key)})")
+
+        if mismatches:
+            raise ConfigMismatchError(
+                f"Configuration mismatch for collection '{self.collection_name}': {', '.join(mismatches)}. "
+                "Please run rebuild() to re-index with the new configuration."
+            )
 
     def _sync_collection_metadata(self):
         metadata = {
@@ -110,10 +137,6 @@ class SearchIndex:
         self.db.delete_sources_except(self.collection_name, active_paths)
 
     def _validate_collection_name(self, name: str):
-        # collection_name rules:
-        # - alphanumeric, underscore, hyphen
-        # - 3-63 characters
-        # - start/end with alphanumeric
         if not (3 <= len(name) <= 63):
             raise ValueError(f"collection_name must be between 3 and 63 characters: {name}")
 
@@ -125,19 +148,16 @@ class SearchIndex:
             )
 
     def _normalize_and_validate_sources(self, sources: List[DirectorySource]) -> List[DirectorySource]:
-        # Deduplicate sources based on normalized path
         unique_paths = {}
         for s in sources:
             unique_paths[s.path] = s
 
         sorted_sources = sorted(unique_paths.values(), key=lambda x: x.path)
 
-        # Check for parent-child relationship
         for i, s1 in enumerate(sorted_sources):
             p1 = Path(s1.path)
             for s2 in sorted_sources[i+1:]:
                 p2 = Path(s2.path)
-                # Check if p1 is a parent of p2
                 if p1 in p2.parents or p1 == p2:
                      raise ValueError(f"Sources cannot have parent-child relationship: {p1} and {p2}")
 
@@ -152,10 +172,13 @@ class SearchIndex:
                 raise FileNotFoundError(f"Source path does not exist: {source.path}")
 
     def sync(self) -> SyncReport:
-        # Validate first, before mutating the DB
+        self._check_config_mismatch()
         self._validate_source_existence()
 
-        # Sync sources to DB now that we're actually syncing
+        # Upsert collection metadata on first sync
+        if not self.db.get_collection(self.collection_name):
+            self._sync_collection_metadata()
+
         self._sync_sources_to_db()
 
         # Implementation out of scope for this session
@@ -176,6 +199,8 @@ class SearchIndex:
         limit: int = 10,
         mode: Literal["keyword", "similarity", "hybrid"] = "hybrid"
     ) -> List[SearchHit]:
+        self._check_config_mismatch()
+
         if not query.strip():
             raise ValueError("Query cannot be empty or whitespace only")
 
@@ -186,18 +211,17 @@ class SearchIndex:
         if mode not in valid_modes:
             raise ValueError(f"Invalid mode: {mode}. Must be one of {valid_modes}")
 
-        # Implementation out of scope for this session
         return []
 
     def rebuild(self) -> SyncReport:
-        # Validate first
         self._validate_source_existence()
 
-        # Sync sources to DB for rebuild
-        self._sync_sources_to_db()
-        # Implementation out of scope for this session
+        # Clear existing data for this collection
+        self.db.delete_collection(self.collection_name)
+
+        # Re-initialize collection and sources via sync()
+        # sync() will call _sync_collection_metadata() because get_collection() will be None
         return self.sync()
 
     def clear(self) -> None:
-        # Implementation out of scope for this session
-        pass
+        self.db.delete_collection(self.collection_name)

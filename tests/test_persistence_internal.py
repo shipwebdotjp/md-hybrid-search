@@ -41,7 +41,13 @@ def test_persistence():
 
         db = index.db
 
-        # Check collection metadata
+        # Check collection metadata - should be None initially as it is only synced during sync()
+        coll = db.get_collection(collection_name)
+        assert coll is None
+
+        # Trigger sync to populate sources and metadata
+        index.sync()
+
         coll = db.get_collection(collection_name)
         assert coll is not None
         assert coll['collection_name'] == collection_name
@@ -50,12 +56,6 @@ def test_persistence():
         assert metadata['chunk_overlap'] == 50
         assert len(metadata['embedder_fingerprint']) == 64  # sha256 hex
 
-        # Check sources - sources are not synced to DB yet in __init__
-        db_sources = db.get_sources(collection_name)
-        assert len(db_sources) == 0
-
-        # Trigger sync to populate sources
-        index.sync()
         db_sources = db.get_sources(collection_name)
         assert len(db_sources) == 1
         assert db_sources[0]['source_path'] == sources[0].path

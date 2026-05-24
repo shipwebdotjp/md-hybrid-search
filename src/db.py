@@ -105,7 +105,6 @@ class Database:
         cursor = self.conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='schema_meta'")
         if not cursor.fetchone():
             # If schema_meta is missing, ensure the DB is empty.
-            # If it's not empty, it might be a legacy DB without schema_meta.
             cursor = self.conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
             if cursor.fetchone():
                  raise RuntimeError(
@@ -116,13 +115,18 @@ class Database:
 
         cursor = self.conn.execute("SELECT value FROM schema_meta WHERE key = 'schema_version'")
         row = cursor.fetchone()
-        if row:
-            version = int(row['value'])
-            if version != SCHEMA_VERSION:
-                raise RuntimeError(
-                    f"Schema version mismatch: database has v{version}, but code expects v{SCHEMA_VERSION}. "
-                    "Automatic migration is not supported. Please rebuild the index."
-                )
+        if not row:
+            raise RuntimeError(
+                "schema_meta table exists but schema_version is missing. "
+                "The database may be corrupted. Please rebuild the index."
+            )
+
+        version = int(row['value'])
+        if version != SCHEMA_VERSION:
+            raise RuntimeError(
+                f"Schema version mismatch: database has v{version}, but code expects v{SCHEMA_VERSION}. "
+                "Automatic migration is not supported. Please rebuild the index."
+            )
 
     # Collection CRUD
     def upsert_collection(self, name: str, metadata_json: str):
