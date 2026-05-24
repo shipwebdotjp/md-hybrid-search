@@ -250,10 +250,17 @@ class Database:
 
             # Sync to FTS
             self.conn.execute("DELETE FROM chunks_fts WHERE chunk_id = ?", (chunk_record['chunk_id'],))
+            fts_content = (
+                chunk_record.get('normalized_content')
+                if chunk_record.get('normalized_content') is not None
+                else chunk_record.get('content_normalized')
+            )
+            if fts_content is None:
+                fts_content = chunk_record['content']
             self.conn.execute("""
                 INSERT INTO chunks_fts (chunk_id, collection_name, content)
                 VALUES (?, ?, ?)
-            """, (chunk_record['chunk_id'], chunk_record['collection_name'], chunk_record['content']))
+            """, (chunk_record['chunk_id'], chunk_record['collection_name'], fts_content))
 
     def delete_chunks_for_file(self, collection_name: str, file_path: str):
         with self.conn:

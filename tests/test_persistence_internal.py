@@ -84,7 +84,8 @@ def test_persistence():
             "source_path": sources[0].path,
             "relative_path": "file.md",
             "chunk_index": 0,
-            "content": "Hello world",
+            "content": "Hello, WORLD!!",
+            "normalized_content": "hello world",
             "content_hash": "hash456",
             "token_count": 2,
             "mtime": time.time(),
@@ -93,13 +94,14 @@ def test_persistence():
         db.upsert_chunk(chunk_record)
         chunks = db.get_chunks_for_file(collection_name, "/path/to/file.md")
         assert len(chunks) == 1
-        assert chunks[0]['content'] == "Hello world"
+        assert chunks[0]['content'] == "Hello, WORLD!!"
 
         # Check FTS
         cursor = db.conn.execute("SELECT * FROM chunks_fts WHERE content MATCH 'world'")
         fts_row = cursor.fetchone()
         assert fts_row is not None
         assert fts_row['chunk_id'] == "chunk1"
+        assert fts_row['content'] == "hello world"
 
         # Test deletion
         db.delete_file(collection_name, "/path/to/file.md")
