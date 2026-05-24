@@ -4,6 +4,7 @@ from typing import Protocol, List, Optional, Any, Literal
 import re
 import os
 import json
+import hashlib
 from .db import Database, SCHEMA_VERSION
 
 @dataclass(frozen=True)
@@ -67,16 +68,28 @@ class SearchIndex:
         # Upsert collection and metadata
         self._sync_collection_metadata()
 
-        # Sync sources in DB
-        self._sync_sources_to_db()
+        # NOTE: _sync_sources_to_db() is moved to sync() to avoid destructive operations during init.
 
     def _get_embedder_fingerprint(self) -> str:
-        # Use class name as fingerprint for now
-        return self.embedder.__class__.__name__
+        # Gather properties for a deterministic fingerprint
+        props = {
+            "class": self.embedder.__class__.__name__,
+            "model_name": getattr(self.embedder, "model_name", None),
+            "embedding_dim": getattr(self.embedder, "embedding_dim", getattr(self.embedder, "dim", None)),
+        }
+        # Serialize to stable JSON
+        serialized = json.dumps(props, sort_keys=True)
+        return hashlib.sha256(serialized.encode()).hexdigest()
 
     def _get_tokenizer_fingerprint(self) -> str:
-        # Placeholder for tokenizer fingerprint
-        return "standard"
+        # Gather properties for a deterministic fingerprint
+        # Since tokenizer is internal and not yet fully exposed, we use placeholder logic for now.
+        props = {
+            "name": "standard",
+            "version": "v1"
+        }
+        serialized = json.dumps(props, sort_keys=True)
+        return hashlib.sha256(serialized.encode()).hexdigest()
 
     def _sync_collection_metadata(self):
         metadata = {
@@ -140,6 +153,9 @@ class SearchIndex:
             if not Path(source.path).exists():
                 raise FileNotFoundError(f"Source path does not exist: {source.path}")
 
+        # Sync sources to DB now that we're actually syncing
+        self._sync_sources_to_db()
+
         # Implementation out of scope for this session
         return SyncReport(
             collection_name=self.collection_name,
@@ -172,6 +188,8 @@ class SearchIndex:
         return []
 
     def rebuild(self) -> SyncReport:
+        # Sync sources to DB for rebuild too
+        self._sync_sources_to_db()
         # Implementation out of scope for this session
         return self.sync()
 

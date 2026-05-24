@@ -3,7 +3,7 @@ import json
 import time
 from typing import Optional, List, Dict, Any
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 class Database:
     def __init__(self, sqlite_path: str):
@@ -11,8 +11,8 @@ class Database:
         self.conn = sqlite3.connect(sqlite_path)
         self.conn.row_factory = sqlite3.Row
         self._setup_connection()
-        self.initialize_schema()
         self.check_schema_version()
+        self.initialize_schema()
 
     def _setup_connection(self):
         self.conn.execute("PRAGMA journal_mode=WAL")
@@ -64,7 +64,8 @@ class Database:
                     content_hash TEXT NOT NULL,
                     last_indexed_at REAL NOT NULL,
                     PRIMARY KEY (collection_name, file_path),
-                    FOREIGN KEY (collection_name) REFERENCES collections(collection_name) ON DELETE CASCADE
+                    FOREIGN KEY (collection_name) REFERENCES collections(collection_name) ON DELETE CASCADE,
+                    FOREIGN KEY (collection_name, source_path) REFERENCES sources(collection_name, source_path) ON DELETE CASCADE
                 )
             """)
 
@@ -100,6 +101,11 @@ class Database:
             """)
 
     def check_schema_version(self):
+        # Check if schema_meta table exists
+        cursor = self.conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='schema_meta'")
+        if not cursor.fetchone():
+            return
+
         cursor = self.conn.execute("SELECT value FROM schema_meta WHERE key = 'schema_version'")
         row = cursor.fetchone()
         if row:
@@ -107,7 +113,7 @@ class Database:
             if version != SCHEMA_VERSION:
                 raise RuntimeError(
                     f"Schema version mismatch: database has v{version}, but code expects v{SCHEMA_VERSION}. "
-                    "Automatic migration is not supported in v1. Please rebuild the index."
+                    "Automatic migration is not supported. Please rebuild the index."
                 )
 
     # Collection CRUD
@@ -148,9 +154,23 @@ class Database:
     def delete_sources_except(self, collection_name: str, active_paths: List[str]):
         with self.conn:
             if not active_paths:
+                # Clean up FTS5 first
+                self.conn.execute("""
+                    DELETE FROM chunks_fts WHERE chunk_id IN (
+                        SELECT chunk_id FROM chunks WHERE collection_name = ?
+                    )
+                """, (collection_name,))
                 self.conn.execute("DELETE FROM sources WHERE collection_name = ?", (collection_name,))
             else:
                 placeholders = ','.join(['?'] * len(active_paths))
+                # Clean up FTS5 for sources being deleted
+                self.conn.execute(f"""
+                    DELETE FROM chunks_fts WHERE chunk_id IN (
+                        SELECT chunk_id FROM chunks
+                        WHERE collection_name = ? AND source_path NOT IN ({placeholders})
+                    )
+                """, [collection_name] + active_paths)
+
                 query = f"DELETE FROM sources WHERE collection_name = ? AND source_path NOT IN ({placeholders})"
                 self.conn.execute(query, [collection_name] + active_paths)
 
