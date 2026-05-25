@@ -441,8 +441,8 @@ class SearchIndex:
             self._embed_query(query)
 
         if mode == "keyword":
-            normalized_query = processor.normalize_text(query)
-            rows = self.db.keyword_search(self.collection_name, normalized_query, limit)
+            tokenized_query = processor.tokenize_query(query)
+            rows = self.db.keyword_search(self.collection_name, tokenized_query, limit)
             hits = []
             for i, row in enumerate(rows):
                 hits.append(SearchHit(

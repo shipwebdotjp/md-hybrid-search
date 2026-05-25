@@ -127,3 +127,13 @@ def test_keyword_search_sync_deletions(index_factory):
 
     # Keyword 'cherry' should no longer match
     assert len(index.search(query="cherry", mode="keyword")) == 0
+
+def test_keyword_search_with_punctuation(index_factory):
+    index, vault = index_factory("punctuation")
+    (vault / "note.md").write_text("Searching for quick-brown fox and apple:banana.", encoding="utf-8")
+    index.sync()
+
+    # These should not raise sqlite3.OperationalError
+    assert len(index.search(query="quick-brown", mode="keyword")) == 1
+    assert len(index.search(query="apple:banana", mode="keyword")) == 1
+    assert len(index.search(query="-fox", mode="keyword")) == 1
