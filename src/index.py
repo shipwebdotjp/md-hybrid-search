@@ -264,10 +264,6 @@ class SearchIndex:
         self._check_config_mismatch()
         self._validate_source_existence()
 
-        # Upsert collection metadata on first sync
-        if not self.db.get_collection(self.collection_name):
-            self._sync_collection_metadata()
-
         # Identify files that WILL be deleted due to source removal
         active_source_paths = [s.path for s in self.sources]
         db_files_before = self.db.get_files_by_collection(self.collection_name)
@@ -275,8 +271,6 @@ class SearchIndex:
             f["file_path"] for f in db_files_before
             if f["source_path"] not in active_source_paths
         ]
-
-        self._sync_sources_to_db()
 
         # 1. Get current state
         disk_files = self._get_files_on_disk()
@@ -311,18 +305,13 @@ class SearchIndex:
                     content_hash = self._calculate_content_hash(fp)
                     if content_hash == db_meta["content_hash"]:
                         unchanged_files += 1
-                        # Update mtime/size in DB to avoid future re-hashing
-                        self.db.upsert_file({
-                            **db_meta,
-                            "mtime": disk_meta["mtime"],
-                            "size": disk_meta["size"],
-                            "last_indexed_at": time.time()
-                        })
                     else:
                         to_index.append((fp, disk_meta, True))
 
         # 3. Prepare data and collect Chroma IDs to delete
         chroma_ids_to_delete = []
+        # Pre-collect IDs for files to be deleted (including orphaned by source removal)
+        # We must do this BEFORE the database transaction executes deletions
         for fp in to_delete:
             chroma_ids_to_delete.extend(self.db.get_chunk_ids_for_file(self.collection_name, fp))
 
@@ -348,9 +337,31 @@ class SearchIndex:
 
         # 4. SQLite Transaction (Unified)
         with self.db.conn:
+            # Metadata & Sources
+            if not self.db.get_collection(self.collection_name):
+                self._sync_collection_metadata()
+            self._sync_sources_to_db()
+
             # Execute deletions
             for fp in to_delete:
                 self.db.delete_file(self.collection_name, fp)
+
+            # Update unchanged but mtime/size changed files
+            # This is safe to do because content_hash matched
+            for fp, disk_meta in disk_files.items():
+                if fp in db_files:
+                    db_meta = db_files[fp]
+                    if disk_meta["mtime"] != db_meta["mtime"] or disk_meta["size"] != db_meta["size"]:
+                        # We only do this if it's considered unchanged (hash matched)
+                        # Re-calculate hash to be absolutely sure if it's not in to_index
+                        content_hash = self._calculate_content_hash(fp)
+                        if content_hash == db_meta["content_hash"]:
+                            self.db.upsert_file({
+                                **db_meta,
+                                "mtime": disk_meta["mtime"],
+                                "size": disk_meta["size"],
+                                "last_indexed_at": time.time()
+                            })
 
             # Execute indexing
             for fp, meta, content_hash, chunks, is_update in indexed_files_data:
@@ -436,6 +447,10 @@ class SearchIndex:
 
         # Clear existing data for this collection
         self.db.delete_collection(self.collection_name)
+        self.chroma_client.delete_collection(self.collection_name)
+        self.chroma_collection = self.chroma_client.get_or_create_collection(
+            name=self.collection_name
+        )
 
         # Re-initialize collection and sources via sync()
         # sync() will call _sync_collection_metadata() because get_collection() will be None
@@ -483,3 +498,7 @@ class SearchIndex:
 
     def clear(self) -> None:
         self.db.delete_collection(self.collection_name)
+        self.chroma_client.delete_collection(self.collection_name)
+        self.chroma_collection = self.chroma_client.get_or_create_collection(
+            name=self.collection_name
+        )

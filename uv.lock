@@ -837,14 +837,19 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "chromadb" },
+]
+
+[package.optional-dependencies]
+tests = [
     { name = "pytest" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "chromadb", specifier = ">=1.5.9" },
-    { name = "pytest", specifier = ">=9.0.3" },
+    { name = "pytest", marker = "extra == 'tests'", specifier = ">=9.0.3" },
 ]
+provides-extras = ["tests"]
 
 [[package]]
 name = "mdurl"

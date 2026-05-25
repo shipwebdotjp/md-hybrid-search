@@ -71,8 +71,10 @@ def test_sync_updated_file(index_params):
     index.sync()
 
     # Update file
-    time.sleep(0.1) # Ensure mtime changes
     note1.write_text("Hello World Updated", encoding="utf-8")
+    # Deterministic mtime bump
+    forced_mtime = note1.stat().st_mtime + 2.0
+    os.utime(note1, (forced_mtime, forced_mtime))
 
     report = index.sync()
     assert report.scanned_files == 1
@@ -124,3 +126,53 @@ def test_sync_source_removal(tmp_path):
     assert report.deleted_files == 1 # note2.md should be deleted
     assert report.scanned_files == 1
     assert report.unchanged_files == 1
+
+def test_sync_missing_source_raises(index_params):
+    vault_path = Path(index_params["sources"][0].path)
+    (vault_path / "note1.md").write_text("Hello", encoding="utf-8")
+
+    index = SearchIndex(**index_params)
+
+    # Remove the directory from disk
+    import shutil
+    shutil.rmtree(vault_path)
+
+    with pytest.raises(FileNotFoundError):
+        index.sync()
+
+def test_sync_embed_failure_rolls_back(index_params):
+    vault_path = Path(index_params["sources"][0].path)
+    (vault_path / "note1.md").write_text("Hello", encoding="utf-8")
+
+    class FailingEmbedder:
+        embedding_dim = 128
+        def embed_documents(self, texts):
+            raise RuntimeError("Embed fail")
+        def embed_query(self, text):
+            return [0.1] * 128
+
+    index_params["embedder"] = FailingEmbedder()
+    index = SearchIndex(**index_params)
+
+    # Try sync, should fail
+    with pytest.raises(RuntimeError, match="Embed fail"):
+        index.sync()
+
+    # Verify SQLite is empty (except for collection which might have been created but we moved it into transaction)
+    import sqlite3
+    conn = sqlite3.connect(index_params["sqlite_path"])
+    conn.row_factory = sqlite3.Row
+
+    # Files table should be empty if transaction rolled back
+    row = conn.execute("SELECT count(*) as count FROM files").fetchone()
+    assert row["count"] == 0
+
+    # Chunks table should be empty
+    row = conn.execute("SELECT count(*) as count FROM chunks").fetchone()
+    assert row["count"] == 0
+
+    # Collection metadata should NOT exist if it was the first sync and it rolled back
+    row = conn.execute("SELECT count(*) as count FROM collections").fetchone()
+    assert row["count"] == 0
+
+    conn.close()

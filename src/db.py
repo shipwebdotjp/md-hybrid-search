@@ -267,7 +267,7 @@ class Database:
             )
         """, (collection_name, file_path))
         # Delete from chunks
-        self.conn.execute("DELETE FROM files WHERE collection_name = ? AND file_path = ?", (collection_name, file_path))
+        self.conn.execute("DELETE FROM chunks WHERE collection_name = ? AND file_path = ?", (collection_name, file_path))
 
     def get_chunks_for_file(self, collection_name: str, file_path: str) -> List[Dict[str, Any]]:
         cursor = self.conn.execute("SELECT * FROM chunks WHERE collection_name = ? AND file_path = ? ORDER BY chunk_index", (collection_name, file_path))

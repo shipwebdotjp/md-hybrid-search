@@ -59,11 +59,11 @@
 - [ ] `SearchHit.score` は「大きいほど上位」になるようにする
 
 ## 7. ChromaDB
-- [ ] `PersistentClient` を作成する
-- [ ] `collection_name` ごとに Chroma collection を作成・取得する
-- [ ] `chunk_id` 単位で upsert する処理を実装する
-- [ ] `chunk_id` 単位で delete する処理を実装する
-- [ ] Chroma metadata を SQLite の chunks と揃える
+- [x] `PersistentClient` を作成する
+- [x] `collection_name` ごとに Chroma collection を作成・取得する
+- [x] `chunk_id` 単位で upsert する処理を実装する
+- [x] `chunk_id` 単位で delete する処理を実装する
+- [x] Chroma metadata を SQLite の chunks と揃える
 
 ## 8. Hybrid Search
 - [ ] keyword search と similarity search を実装する
