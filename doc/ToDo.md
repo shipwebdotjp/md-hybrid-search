@@ -67,14 +67,14 @@
 - [x] Chroma metadata を SQLite の chunks と揃える
 
 ## 8. Hybrid Search
-- [ ] keyword search と similarity search を実装する
-- [ ] hybrid search で両方の候補を取得する
-- [ ] candidate count を `max(limit * 5, 50)` にする
-- [ ] RRF で統合する
-- [ ] RRF の `k` を 60 にする
-- [ ] 同一 `chunk_id` の結果を 1 件にまとめる
-- [ ] 上位 `limit` 件を `SearchHit` として返す
-- [ ] `SearchHit.metadata` に必要な項目を含める
+- [x] keyword search と similarity search を実装する
+- [x] hybrid search で両方の候補を取得する
+- [x] candidate count を `max(limit * 5, 50)` にする
+- [x] RRF で統合する
+- [x] RRF の `k` を 60 にする
+- [x] 同一 `chunk_id` の結果を 1 件にまとめる
+- [x] 上位 `limit` 件を `SearchHit` として返す
+- [x] `SearchHit.metadata` に必要な項目を含める
 
 ## 9. Rebuild / Clear / エラー処理
 - [x] `rebuild()` を実装する
