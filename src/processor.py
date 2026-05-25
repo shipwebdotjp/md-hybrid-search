@@ -71,10 +71,13 @@ def normalize_text(text: str) -> str:
     normalized = re.sub(r'\s+', ' ', normalized).strip()
     return normalized
 
-def tokenize_query(query: str) -> str:
+def tokenize_query(query: str) -> Optional[str]:
     """
     Tokenizes and quotes query terms to avoid FTS5 syntax errors.
     Extracts alphanumeric tokens and joins them with quotes.
+    Returns None if no tokens are found.
     """
     tokens = re.findall(r'\w+', query)
+    if not tokens:
+        return None
     return ' '.join(f'"{token}"' for token in tokens)

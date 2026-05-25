@@ -57,6 +57,7 @@
 - [x] collection 内に限定した keyword 検索を実装する
 - [x] BM25 結果を `SearchHit.score` 用に順位ベースへ変換する
 - [x] `SearchHit.score` は「大きいほど上位」になるようにする
+- [x] `SearchHit` が必須のメタデータ項目 (collection_name, source_path, file_path, relative_path, chunk_index, mtime, content_hash) を返すようにする
 
 ## 7. ChromaDB
 - [x] `PersistentClient` を作成する

@@ -137,3 +137,15 @@ def test_keyword_search_with_punctuation(index_factory):
     assert len(index.search(query="quick-brown", mode="keyword")) == 1
     assert len(index.search(query="apple:banana", mode="keyword")) == 1
     assert len(index.search(query="-fox", mode="keyword")) == 1
+
+def test_keyword_search_only_punctuation(index_factory):
+    index, vault = index_factory("only-punctuation")
+    (vault / "note.md").write_text("Some content", encoding="utf-8")
+    index.sync()
+
+    # Queries with only punctuation should return empty results instead of crashing
+    assert index.search(query="!!!", mode="keyword") == []
+
+    # Whitespace only should still raise ValueError as per SearchIndex contract
+    with pytest.raises(ValueError, match="Query cannot be empty or whitespace only"):
+        index.search(query="   ", mode="keyword")

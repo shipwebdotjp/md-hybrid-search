@@ -442,6 +442,8 @@ class SearchIndex:
 
         if mode == "keyword":
             tokenized_query = processor.tokenize_query(query)
+            if tokenized_query is None:
+                return []
             rows = self.db.keyword_search(self.collection_name, tokenized_query, limit)
             hits = []
             for i, row in enumerate(rows):
