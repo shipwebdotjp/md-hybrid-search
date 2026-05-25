@@ -266,11 +266,6 @@ class SearchIndex:
 
         # Identify files that WILL be deleted due to source removal
         active_source_paths = [s.path for s in self.sources]
-        db_files_before = self.db.get_files_by_collection(self.collection_name)
-        files_to_delete_by_source = [
-            f["file_path"] for f in db_files_before
-            if f["source_path"] not in active_source_paths
-        ]
 
         # 1. Get current state
         disk_files = self._get_files_on_disk()
@@ -281,15 +276,14 @@ class SearchIndex:
         to_index = []  # List of (file_path, disk_meta, is_update)
         unchanged_files = 0
 
-        # Files on DB but not on disk (already missing from disk)
+        # Add files that were orphaned by source removal BUT are not on disk anymore
+        # (This is a subset of "Files on DB but not on disk")
         for fp in db_files:
             if fp not in disk_files:
                 to_delete.append(fp)
 
-        # Add files that were orphaned by source removal
-        for fp in files_to_delete_by_source:
-            if fp not in to_delete:
-                to_delete.append(fp)
+        # Files that were orphaned by source removal BUT ARE still on disk via another source
+        # will be handled in the disk loop below (treated as is_update if is_orphaned is True)
 
         # Files on disk
         for fp, disk_meta in disk_files.items():
@@ -297,13 +291,17 @@ class SearchIndex:
                 to_index.append((fp, disk_meta, False))
             else:
                 db_meta = db_files[fp]
-                # Fast check
-                if disk_meta["mtime"] == db_meta["mtime"] and disk_meta["size"] == db_meta["size"]:
+                # If the file's stored source_path is no longer active,
+                # we MUST re-index it to re-attach it to an active source.
+                # Otherwise, _sync_sources_to_db() will delete it via cascade.
+                is_orphaned = db_meta["source_path"] not in active_source_paths
+
+                if not is_orphaned and disk_meta["mtime"] == db_meta["mtime"] and disk_meta["size"] == db_meta["size"]:
                     unchanged_files += 1
                 else:
                     # Content hash check
                     content_hash = self._calculate_content_hash(fp)
-                    if content_hash == db_meta["content_hash"]:
+                    if not is_orphaned and content_hash == db_meta["content_hash"]:
                         unchanged_files += 1
                     else:
                         to_index.append((fp, disk_meta, True))
@@ -398,7 +396,9 @@ class SearchIndex:
 
         # 5. Chroma Sync (after SQLite commit)
         if chroma_ids_to_delete:
-            self.chroma_collection.delete(ids=chroma_ids_to_delete)
+            # deduplicate IDs to avoid chromadb.errors.DuplicateIDError
+            unique_ids_to_delete = list(set(chroma_ids_to_delete))
+            self.chroma_collection.delete(ids=unique_ids_to_delete)
 
         if all_new_chunks:
             self.chroma_collection.upsert(

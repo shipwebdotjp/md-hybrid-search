@@ -1,6 +1,7 @@
 import pytest
 import os
 import time
+import sqlite3
 from pathlib import Path
 from src.index import SearchIndex, DirectorySource, SyncReport
 from typing import List
@@ -175,4 +176,66 @@ def test_sync_embed_failure_rolls_back(index_params):
     row = conn.execute("SELECT count(*) as count FROM collections").fetchone()
     assert row["count"] == 0
 
+    conn.close()
+
+def test_sync_shared_file_source_removal(tmp_path):
+    # Setup two vaults
+    vault1 = tmp_path / "vault1"
+    vault1.mkdir()
+    vault2 = tmp_path / "vault2"
+    vault2.mkdir()
+
+    # Note in vault1
+    note_v1 = vault1 / "note.md"
+    note_v1.write_text("Common Content", encoding="utf-8")
+
+    # Note in vault2 (could be same content or different, but resolved path is key)
+    # To simulate the bug correctly, the file should be the SAME file (resolved path).
+    # We can use a symlink in vault2 pointing to the file in vault1.
+    note_v2 = vault2 / "note_link.md"
+    note_v2.symlink_to(note_v1)
+
+    params = {
+        "collection_name": "test-shared-source",
+        "sources": [DirectorySource(str(vault1)), DirectorySource(str(vault2))],
+        "sqlite_path": str(tmp_path / "test.sqlite"),
+        "chroma_path": str(tmp_path / "chroma"),
+        "embedder": MockEmbedder(),
+    }
+
+    index = SearchIndex(**params)
+    # First sync: note_v1 and note_v2 resolve to same path.
+    # Because of alphabetical rglob order or just hash-collision handling, only one row for the resolved path exists.
+    # Actually, DirectorySource uses resolve(), so the resolved path IS the key.
+    # Scanned files might be 2 if symlinks are found, but only 1 entry in DB.
+    report = index.sync()
+    assert report.scanned_files == 1 # Only one unique resolved path
+
+    # Verify it is attached to one of the vaults
+    conn = sqlite3.connect(params["sqlite_path"])
+    conn.row_factory = sqlite3.Row
+    row = conn.execute("SELECT source_path FROM files LIMIT 1").fetchone()
+    stored_source = row["source_path"]
+    assert stored_source in [str(vault1), str(vault2)]
+    conn.close()
+
+    # Remove the vault it is currently attached to from configuration
+    source_to_keep = vault1 if stored_source == str(vault2) else vault2
+    source_to_remove = vault2 if stored_source == str(vault2) else vault1
+
+    params["sources"] = [DirectorySource(str(source_to_keep))]
+    index2 = SearchIndex(**params)
+
+    # Sync again. note.md is still reachable via the remaining source link/file
+    # It should NOT be deleted, but re-attached to the active source.
+    report2 = index2.sync()
+
+    # It should be treated as updated (re-indexed) because its source_path went away
+    assert report2.updated_files == 1
+    assert report2.deleted_files == 0
+
+    conn = sqlite3.connect(params["sqlite_path"])
+    conn.row_factory = sqlite3.Row
+    row = conn.execute("SELECT source_path FROM files LIMIT 1").fetchone()
+    assert row["source_path"] == str(source_to_keep)
     conn.close()
