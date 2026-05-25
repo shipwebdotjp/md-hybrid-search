@@ -358,8 +358,7 @@ class SearchIndex:
         # 4. SQLite Transaction (Unified)
         with self.db.conn:
             # Metadata & Sources
-            if not self.db.get_collection(self.collection_name):
-                self._sync_collection_metadata()
+            self._sync_collection_metadata()
             self._sync_sources_to_db()
 
             # Execute deletions
@@ -455,12 +454,28 @@ class SearchIndex:
             include=["documents", "metadatas"]
         )
 
+    def _to_search_hit_metadata(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Ensures all required metadata fields are present in the SearchHit."""
+        return {
+            "collection_name": data["collection_name"],
+            "source_path": data["source_path"],
+            "file_path": data["file_path"],
+            "relative_path": data["relative_path"],
+            "chunk_index": data["chunk_index"],
+            "mtime": data["mtime"],
+            "content_hash": data["content_hash"],
+        }
+
     def search(
         self,
         query: str,
         limit: int = 10,
         mode: Literal["keyword", "similarity", "hybrid"] = "hybrid"
     ) -> List[SearchHit]:
+        """
+        Searches the collection using keyword, similarity, or hybrid mode.
+        Returns a list of SearchHit objects ordered by score descending.
+        """
         self._check_config_mismatch()
 
         if not query.strip():
@@ -469,124 +484,97 @@ class SearchIndex:
         if limit < 1:
             raise ValueError(f"Limit must be at least 1: {limit}")
 
-        valid_modes = ["keyword", "similarity", "hybrid"]
-        if mode not in valid_modes:
-            raise ValueError(f"Invalid mode: {mode}. Must be one of {valid_modes}")
-
         if mode == "keyword":
             rows = self._keyword_search_raw(query, limit)
-            hits = []
-            for i, row in enumerate(rows):
-                hits.append(SearchHit(
+            return [
+                SearchHit(
                     chunk_id=row["chunk_id"],
                     score=1.0 / (i + 1),
                     mode="keyword",
                     content=row["content"],
-                    metadata={
-                        "collection_name": row["collection_name"],
-                        "source_path": row["source_path"],
-                        "file_path": row["file_path"],
-                        "relative_path": row["relative_path"],
-                        "chunk_index": row["chunk_index"],
-                        "mtime": row["mtime"],
-                        "content_hash": row["content_hash"],
-                    }
-                ))
-            return hits
+                    metadata=self._to_search_hit_metadata(row)
+                )
+                for i, row in enumerate(rows)
+            ]
 
         if mode == "similarity":
             results = self._similarity_search_raw(query, limit)
             hits = []
             if results["ids"] and results["ids"][0]:
-                ids = results["ids"][0]
-                documents = results["documents"][0]
-                metadatas = results["metadatas"][0]
-                for i, (chunk_id, doc, meta) in enumerate(zip(ids, documents, metadatas)):
+                for i, (chunk_id, doc, meta) in enumerate(zip(results["ids"][0], results["documents"][0], results["metadatas"][0])):
                     hits.append(SearchHit(
                         chunk_id=chunk_id,
                         score=1.0 / (i + 1),
                         mode="similarity",
                         content=doc,
-                        metadata=meta
+                        metadata=self._to_search_hit_metadata(meta)
                     ))
             return hits
 
         if mode == "hybrid":
             candidate_limit = max(limit * 5, 50)
-
-            # Keyword candidates
             kw_rows = self._keyword_search_raw(query, candidate_limit)
-
-            # Similarity candidates
             sim_results = self._similarity_search_raw(query, candidate_limit)
 
-            # RRF
+            # Reciprocal Rank Fusion (RRF)
             k = 60
-            scores = {}  # chunk_id -> score
-            chunk_data = {}  # chunk_id -> (content, metadata)
+            scores: dict[str, float] = {}  # chunk_id -> rrf_score
+            chunk_data: dict[str, tuple[str, dict[str, Any]]] = {}  # chunk_id -> (content, metadata)
 
+            # Process Keyword Results
             for i, row in enumerate(kw_rows):
                 cid = row["chunk_id"]
-                scores[cid] = scores.get(cid, 0) + 1.0 / (k + i + 1)
+                scores[cid] = scores.get(cid, 0.0) + 1.0 / (k + i + 1)
                 if cid not in chunk_data:
-                    chunk_data[cid] = (row["content"], {
-                        "collection_name": row["collection_name"],
-                        "source_path": row["source_path"],
-                        "file_path": row["file_path"],
-                        "relative_path": row["relative_path"],
-                        "chunk_index": row["chunk_index"],
-                        "mtime": row["mtime"],
-                        "content_hash": row["content_hash"],
-                    })
+                    chunk_data[cid] = (row["content"], self._to_search_hit_metadata(row))
 
+            # Process Similarity Results
             if sim_results["ids"] and sim_results["ids"][0]:
-                ids = sim_results["ids"][0]
-                documents = sim_results["documents"][0]
-                metadatas = sim_results["metadatas"][0]
-                for i, (cid, doc, meta) in enumerate(zip(ids, documents, metadatas)):
-                    scores[cid] = scores.get(cid, 0) + 1.0 / (k + i + 1)
+                for i, (cid, doc, meta) in enumerate(zip(sim_results["ids"][0], sim_results["documents"][0], sim_results["metadatas"][0])):
+                    scores[cid] = scores.get(cid, 0.0) + 1.0 / (k + i + 1)
                     if cid not in chunk_data:
-                        chunk_data[cid] = (doc, meta)
+                        chunk_data[cid] = (doc, self._to_search_hit_metadata(meta))
 
-            # Sort and return
+            # Sort by RRF score descending
             sorted_ids = sorted(scores.keys(), key=lambda cid: scores[cid], reverse=True)
-            top_ids = sorted_ids[:limit]
 
-            hits = []
-            for cid in top_ids:
-                content, metadata = chunk_data[cid]
-                hits.append(SearchHit(
+            return [
+                SearchHit(
                     chunk_id=cid,
                     score=scores[cid],
                     mode="hybrid",
-                    content=content,
-                    metadata=metadata
-                ))
-            return hits
+                    content=chunk_data[cid][0],
+                    metadata=chunk_data[cid][1]
+                )
+                for cid in sorted_ids[:limit]
+            ]
 
-        return []
+        raise ValueError(f"Invalid search mode: {mode}. Must be one of 'keyword', 'similarity', 'hybrid'.")
 
     def rebuild(self) -> SyncReport:
         """
         Deletes all index state for the collection in SQLite and ChromaDB,
         then re-indexes from the current sources.
+        Useful when configuration (like chunk_size or embedder) has changed.
         """
         self._validate_source_existence()
 
-        # Clear existing data for this collection
+        # 1. Purge all existing data from both stores
         self.db.delete_collection(self.collection_name)
         try:
             self.chroma_client.delete_collection(self.collection_name)
         except ValueError:
-            # If collection didn't exist in Chroma, ignore error
+            # Catch only ValueError which indicates the collection did not exist
             pass
 
+        # 2. Re-create the Chroma collection
         self.chroma_collection = self.chroma_client.get_or_create_collection(
             name=self.collection_name
         )
 
-        # Re-initialize collection and sources via sync()
-        # sync() will call _sync_collection_metadata() because get_collection() will be None
+        # 3. Perform a full synchronization
+        # Since the collection was deleted from SQLite, sync() will re-create
+        # its metadata with the current configuration.
         return self.sync()
 
     def _process_file(self, file_path: str, source_path: str, relative_path: str) -> List[processor.Chunk]:
@@ -638,7 +626,10 @@ class SearchIndex:
         try:
             self.chroma_client.delete_collection(self.collection_name)
         except ValueError:
+            # Catch only ValueError which indicates the collection did not exist
             pass
+
+        # Ensure we have a fresh, empty collection object
         self.chroma_collection = self.chroma_client.get_or_create_collection(
             name=self.collection_name
         )
