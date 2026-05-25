@@ -440,6 +440,28 @@ class SearchIndex:
         if mode in ("similarity", "hybrid"):
             self._embed_query(query)
 
+        if mode == "keyword":
+            normalized_query = processor.normalize_text(query)
+            rows = self.db.keyword_search(self.collection_name, normalized_query, limit)
+            hits = []
+            for i, row in enumerate(rows):
+                hits.append(SearchHit(
+                    chunk_id=row["chunk_id"],
+                    score=1.0 / (i + 1),
+                    mode="keyword",
+                    content=row["content"],
+                    metadata={
+                        "collection_name": row["collection_name"],
+                        "source_path": row["source_path"],
+                        "file_path": row["file_path"],
+                        "relative_path": row["relative_path"],
+                        "chunk_index": row["chunk_index"],
+                        "mtime": row["mtime"],
+                        "content_hash": row["content_hash"],
+                    }
+                ))
+            return hits
+
         return []
 
     def rebuild(self) -> SyncReport:

@@ -52,11 +52,11 @@
 - [x] `SyncReport` を返す
 
 ## 6. FTS5 / BM25
-- [ ] FTS5 用テーブルとインデックスを作成する
-- [ ] chunk の追加・更新・削除に合わせて FTS を同期する
-- [ ] collection 内に限定した keyword 検索を実装する
-- [ ] BM25 結果を `SearchHit.score` 用に順位ベースへ変換する
-- [ ] `SearchHit.score` は「大きいほど上位」になるようにする
+- [x] FTS5 用テーブルとインデックスを作成する
+- [x] chunk の追加・更新・削除に合わせて FTS を同期する
+- [x] collection 内に限定した keyword 検索を実装する
+- [x] BM25 結果を `SearchHit.score` 用に順位ベースへ変換する
+- [x] `SearchHit.score` は「大きいほど上位」になるようにする
 
 ## 7. ChromaDB
 - [x] `PersistentClient` を作成する
