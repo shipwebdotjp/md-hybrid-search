@@ -4,6 +4,7 @@ import time
 import sqlite3
 from pathlib import Path
 from src.index import SearchIndex, DirectorySource, SyncReport
+from src.exceptions import EmbeddingError, SourceNotFoundError
 from typing import List
 
 class MockEmbedder:
@@ -138,7 +139,7 @@ def test_sync_missing_source_raises(index_params):
     import shutil
     shutil.rmtree(vault_path)
 
-    with pytest.raises(FileNotFoundError):
+    with pytest.raises(SourceNotFoundError):
         index.sync()
 
 def test_sync_embed_failure_rolls_back(index_params):
@@ -156,7 +157,7 @@ def test_sync_embed_failure_rolls_back(index_params):
     index = SearchIndex(**index_params)
 
     # Try sync, should fail
-    with pytest.raises(RuntimeError, match="Embed fail"):
+    with pytest.raises(EmbeddingError, match="Embed fail"):
         index.sync()
 
     # Verify SQLite is empty (except for collection which might have been created but we moved it into transaction)
