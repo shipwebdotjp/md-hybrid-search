@@ -563,8 +563,8 @@ class SearchIndex:
         self.db.delete_collection(self.collection_name)
         try:
             self.chroma_client.delete_collection(self.collection_name)
-        except (ValueError, Exception):
-            # Handle cases where collection might not exist or other transient Chroma errors
+        except ValueError:
+            # Catch only ValueError which indicates the collection did not exist
             pass
 
         # 2. Re-create the Chroma collection
@@ -625,7 +625,8 @@ class SearchIndex:
         self.db.delete_collection(self.collection_name)
         try:
             self.chroma_client.delete_collection(self.collection_name)
-        except (ValueError, Exception):
+        except ValueError:
+            # Catch only ValueError which indicates the collection did not exist
             pass
 
         # Ensure we have a fresh, empty collection object
