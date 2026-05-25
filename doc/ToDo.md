@@ -41,15 +41,15 @@
 - [x] embedding cache を作らない方針を反映する
 
 ## 5. Sync 処理
-- [ ] source 配下を再帰スキャンする処理を実装する
-- [ ] 対象を `.md` のみに絞る
-- [ ] `mtime` / `size` / `content_hash` で追加・変更・未変更を判定する
-- [ ] 新規ファイルの chunk 化・embedding・SQLite 保存・FTS 保存・Chroma 保存を実装する
-- [ ] 変更ファイルの既存 chunk 削除と再投入を実装する
-- [ ] 削除ファイルの SQLite / FTS / Chroma からの削除を実装する
-- [ ] collection から外れた source 配下の file / chunk を削除する
-- [ ] SQLite 更新を transaction 内で行う
-- [ ] `SyncReport` を返す
+- [x] source 配下を再帰スキャンする処理を実装する
+- [x] 対象を `.md` のみに絞る
+- [x] `mtime` / `size` / `content_hash` で追加・変更・未変更を判定する
+- [x] 新規ファイルの chunk 化・embedding・SQLite 保存・FTS 保存・Chroma 保存を実装する
+- [x] 変更ファイルの既存 chunk 削除と再投入を実装する
+- [x] 削除ファイルの SQLite / FTS / Chroma からの削除を実装する
+- [x] collection から外れた source 配下の file / chunk を削除する
+- [x] SQLite 更新を transaction 内で行う
+- [x] `SyncReport` を返す
 
 ## 6. FTS5 / BM25
 - [ ] FTS5 用テーブルとインデックスを作成する

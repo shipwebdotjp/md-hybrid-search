@@ -131,14 +131,13 @@ class Database:
     # Collection CRUD
     def upsert_collection(self, name: str, metadata_json: str):
         now = time.time()
-        with self.conn:
-            self.conn.execute("""
-                INSERT INTO collections (collection_name, created_at, updated_at, metadata_json)
-                VALUES (?, ?, ?, ?)
-                ON CONFLICT(collection_name) DO UPDATE SET
-                    updated_at = excluded.updated_at,
-                    metadata_json = excluded.metadata_json
-            """, (name, now, now, metadata_json))
+        self.conn.execute("""
+            INSERT INTO collections (collection_name, created_at, updated_at, metadata_json)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(collection_name) DO UPDATE SET
+                updated_at = excluded.updated_at,
+                metadata_json = excluded.metadata_json
+        """, (name, now, now, metadata_json))
 
     def get_collection(self, name: str) -> Optional[Dict[str, Any]]:
         cursor = self.conn.execute("SELECT * FROM collections WHERE collection_name = ?", (name,))
@@ -146,45 +145,42 @@ class Database:
         return dict(row) if row else None
 
     def delete_collection(self, name: str):
-        with self.conn:
-            # Delete from chunks_fts (virtual table, no CASCADE)
-            self.conn.execute("DELETE FROM chunks_fts WHERE collection_name = ?", (name,))
-            # This will cascade delete sources, files, and chunks
-            self.conn.execute("DELETE FROM collections WHERE collection_name = ?", (name,))
+        # Delete from chunks_fts (virtual table, no CASCADE)
+        self.conn.execute("DELETE FROM chunks_fts WHERE collection_name = ?", (name,))
+        # This will cascade delete sources, files, and chunks
+        self.conn.execute("DELETE FROM collections WHERE collection_name = ?", (name,))
 
     # Source CRUD
     def upsert_source(self, collection_name: str, source_path: str):
         now = time.time()
-        with self.conn:
-            self.conn.execute("""
-                INSERT INTO sources (collection_name, source_path, created_at, updated_at)
-                VALUES (?, ?, ?, ?)
-                ON CONFLICT(collection_name, source_path) DO UPDATE SET
-                    updated_at = excluded.updated_at
-            """, (collection_name, source_path, now, now))
+        self.conn.execute("""
+            INSERT INTO sources (collection_name, source_path, created_at, updated_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(collection_name, source_path) DO UPDATE SET
+                updated_at = excluded.updated_at
+        """, (collection_name, source_path, now, now))
 
     def delete_sources_except(self, collection_name: str, active_paths: List[str]):
-        with self.conn:
-            if not active_paths:
-                # Clean up FTS5 first
-                self.conn.execute("""
-                    DELETE FROM chunks_fts WHERE chunk_id IN (
-                        SELECT chunk_id FROM chunks WHERE collection_name = ?
-                    )
-                """, (collection_name,))
-                self.conn.execute("DELETE FROM sources WHERE collection_name = ?", (collection_name,))
-            else:
-                placeholders = ','.join(['?'] * len(active_paths))
-                # Clean up FTS5 for sources being deleted
-                self.conn.execute(f"""
-                    DELETE FROM chunks_fts WHERE chunk_id IN (
-                        SELECT chunk_id FROM chunks
-                        WHERE collection_name = ? AND source_path NOT IN ({placeholders})
-                    )
-                """, [collection_name] + active_paths)
+        if not active_paths:
+            # Clean up FTS5 first
+            self.conn.execute("""
+                DELETE FROM chunks_fts WHERE chunk_id IN (
+                    SELECT chunk_id FROM chunks WHERE collection_name = ?
+                )
+            """, (collection_name,))
+            self.conn.execute("DELETE FROM sources WHERE collection_name = ?", (collection_name,))
+        else:
+            placeholders = ','.join(['?'] * len(active_paths))
+            # Clean up FTS5 for sources being deleted
+            self.conn.execute(f"""
+                DELETE FROM chunks_fts WHERE chunk_id IN (
+                    SELECT chunk_id FROM chunks
+                    WHERE collection_name = ? AND source_path NOT IN ({placeholders})
+                )
+            """, [collection_name] + active_paths)
 
-                query = f"DELETE FROM sources WHERE collection_name = ? AND source_path NOT IN ({placeholders})"
-                self.conn.execute(query, [collection_name] + active_paths)
+            query = f"DELETE FROM sources WHERE collection_name = ? AND source_path NOT IN ({placeholders})"
+            self.conn.execute(query, [collection_name] + active_paths)
 
     def get_sources(self, collection_name: str) -> List[Dict[str, Any]]:
         cursor = self.conn.execute("SELECT * FROM sources WHERE collection_name = ?", (collection_name,))
@@ -192,90 +188,94 @@ class Database:
 
     # File CRUD
     def upsert_file(self, file_record: Dict[str, Any]):
-        with self.conn:
-            self.conn.execute("""
-                INSERT INTO files (
-                    collection_name, file_path, source_path, relative_path,
-                    mtime, size, content_hash, last_indexed_at
-                )
-                VALUES (:collection_name, :file_path, :source_path, :relative_path,
-                        :mtime, :size, :content_hash, :last_indexed_at)
-                ON CONFLICT(collection_name, file_path) DO UPDATE SET
-                    source_path = excluded.source_path,
-                    relative_path = excluded.relative_path,
-                    mtime = excluded.mtime,
-                    size = excluded.size,
-                    content_hash = excluded.content_hash,
-                    last_indexed_at = excluded.last_indexed_at
-            """, file_record)
+        self.conn.execute("""
+            INSERT INTO files (
+                collection_name, file_path, source_path, relative_path,
+                mtime, size, content_hash, last_indexed_at
+            )
+            VALUES (:collection_name, :file_path, :source_path, :relative_path,
+                    :mtime, :size, :content_hash, :last_indexed_at)
+            ON CONFLICT(collection_name, file_path) DO UPDATE SET
+                source_path = excluded.source_path,
+                relative_path = excluded.relative_path,
+                mtime = excluded.mtime,
+                size = excluded.size,
+                content_hash = excluded.content_hash,
+                last_indexed_at = excluded.last_indexed_at
+        """, file_record)
 
     def delete_file(self, collection_name: str, file_path: str):
-        with self.conn:
-            # Delete from chunks_fts using subquery
-            self.conn.execute("""
-                DELETE FROM chunks_fts WHERE chunk_id IN (
-                    SELECT chunk_id FROM chunks WHERE collection_name = ? AND file_path = ?
-                )
-            """, (collection_name, file_path))
-            # Delete file, chunks are deleted by CASCADE
-            self.conn.execute("DELETE FROM files WHERE collection_name = ? AND file_path = ?", (collection_name, file_path))
+        # Delete from chunks_fts using subquery
+        self.conn.execute("""
+            DELETE FROM chunks_fts WHERE chunk_id IN (
+                SELECT chunk_id FROM chunks WHERE collection_name = ? AND file_path = ?
+            )
+        """, (collection_name, file_path))
+        # Delete file, chunks are deleted by CASCADE
+        self.conn.execute("DELETE FROM files WHERE collection_name = ? AND file_path = ?", (collection_name, file_path))
 
     def get_file(self, collection_name: str, file_path: str) -> Optional[Dict[str, Any]]:
         cursor = self.conn.execute("SELECT * FROM files WHERE collection_name = ? AND file_path = ?", (collection_name, file_path))
         row = cursor.fetchone()
         return dict(row) if row else None
 
+    def get_files_by_collection(self, collection_name: str) -> List[Dict[str, Any]]:
+        cursor = self.conn.execute("SELECT * FROM files WHERE collection_name = ?", (collection_name,))
+        return [dict(row) for row in cursor.fetchall()]
+
     # Chunk CRUD
     def upsert_chunk(self, chunk_record: Dict[str, Any]):
-        with self.conn:
-            self.conn.execute("""
-                INSERT INTO chunks (
-                    chunk_id, collection_name, file_path, source_path, relative_path,
-                    chunk_index, content, content_hash, token_count, mtime, created_at
-                )
-                VALUES (:chunk_id, :collection_name, :file_path, :source_path, :relative_path,
-                        :chunk_index, :content, :content_hash, :token_count, :mtime, :created_at)
-                ON CONFLICT(chunk_id) DO UPDATE SET
-                    collection_name = excluded.collection_name,
-                    file_path = excluded.file_path,
-                    source_path = excluded.source_path,
-                    relative_path = excluded.relative_path,
-                    chunk_index = excluded.chunk_index,
-                    content = excluded.content,
-                    content_hash = excluded.content_hash,
-                    token_count = excluded.token_count,
-                    mtime = excluded.mtime,
-                    created_at = excluded.created_at
-            """, chunk_record)
-
-            # Sync to FTS
-            self.conn.execute("DELETE FROM chunks_fts WHERE chunk_id = ?", (chunk_record['chunk_id'],))
-            fts_content = (
-                chunk_record.get('normalized_content')
-                if chunk_record.get('normalized_content') is not None
-                else chunk_record.get('content_normalized')
+        self.conn.execute("""
+            INSERT INTO chunks (
+                chunk_id, collection_name, file_path, source_path, relative_path,
+                chunk_index, content, content_hash, token_count, mtime, created_at
             )
-            if fts_content is None:
-                fts_content = chunk_record['content']
-            self.conn.execute("""
-                INSERT INTO chunks_fts (chunk_id, collection_name, content)
-                VALUES (?, ?, ?)
-            """, (chunk_record['chunk_id'], chunk_record['collection_name'], fts_content))
+            VALUES (:chunk_id, :collection_name, :file_path, :source_path, :relative_path,
+                    :chunk_index, :content, :content_hash, :token_count, :mtime, :created_at)
+            ON CONFLICT(chunk_id) DO UPDATE SET
+                collection_name = excluded.collection_name,
+                file_path = excluded.file_path,
+                source_path = excluded.source_path,
+                relative_path = excluded.relative_path,
+                chunk_index = excluded.chunk_index,
+                content = excluded.content,
+                content_hash = excluded.content_hash,
+                token_count = excluded.token_count,
+                mtime = excluded.mtime,
+                created_at = excluded.created_at
+        """, chunk_record)
+
+        # Sync to FTS
+        self.conn.execute("DELETE FROM chunks_fts WHERE chunk_id = ?", (chunk_record['chunk_id'],))
+        fts_content = (
+            chunk_record.get('normalized_content')
+            if chunk_record.get('normalized_content') is not None
+            else chunk_record.get('content_normalized')
+        )
+        if fts_content is None:
+            fts_content = chunk_record['content']
+        self.conn.execute("""
+            INSERT INTO chunks_fts (chunk_id, collection_name, content)
+            VALUES (?, ?, ?)
+        """, (chunk_record['chunk_id'], chunk_record['collection_name'], fts_content))
 
     def delete_chunks_for_file(self, collection_name: str, file_path: str):
-        with self.conn:
-            # Delete from chunks_fts using subquery
-            self.conn.execute("""
-                DELETE FROM chunks_fts WHERE chunk_id IN (
-                    SELECT chunk_id FROM chunks WHERE collection_name = ? AND file_path = ?
-                )
-            """, (collection_name, file_path))
-            # Delete from chunks
-            self.conn.execute("DELETE FROM chunks WHERE collection_name = ? AND file_path = ?", (collection_name, file_path))
+        # Delete from chunks_fts using subquery
+        self.conn.execute("""
+            DELETE FROM chunks_fts WHERE chunk_id IN (
+                SELECT chunk_id FROM chunks WHERE collection_name = ? AND file_path = ?
+            )
+        """, (collection_name, file_path))
+        # Delete from chunks
+        self.conn.execute("DELETE FROM files WHERE collection_name = ? AND file_path = ?", (collection_name, file_path))
 
     def get_chunks_for_file(self, collection_name: str, file_path: str) -> List[Dict[str, Any]]:
         cursor = self.conn.execute("SELECT * FROM chunks WHERE collection_name = ? AND file_path = ? ORDER BY chunk_index", (collection_name, file_path))
         return [dict(row) for row in cursor.fetchall()]
+
+    def get_chunk_ids_for_file(self, collection_name: str, file_path: str) -> List[str]:
+        cursor = self.conn.execute("SELECT chunk_id FROM chunks WHERE collection_name = ? AND file_path = ?", (collection_name, file_path))
+        return [row['chunk_id'] for row in cursor.fetchall()]
 
     def close(self):
         self.conn.close()

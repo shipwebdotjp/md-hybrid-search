@@ -35,7 +35,7 @@ def test_index_process_file(tmp_path):
         chunk_overlap=2
     )
 
-    chunks = index._process_file(str(vault), "note.md")
+    chunks = index._process_file(str(note.resolve()), str(vault), "note.md")
 
     assert len(chunks) > 1
     assert chunks[0].content == content[:10]
@@ -46,7 +46,7 @@ def test_index_process_file(tmp_path):
     assert index._embedding_dim == 128
 
     # embedding cache is not used; repeated calls should hit the embedder again
-    index._process_file(str(vault), "note.md")
+    index._process_file(str(note.resolve()), str(vault), "note.md")
     assert index.embedder.document_calls == 2
 
 def test_index_sync_wiring(tmp_path):
@@ -117,7 +117,7 @@ def test_index_embedding_dimension_mismatch_raises(tmp_path):
     )
 
     with pytest.raises(ValueError):
-        index._process_file(str(vault), "note.md")
+        index._process_file(str((vault / "note.md").resolve()), str(vault), "note.md")
 
 
 def test_index_embedding_errors_propagate(tmp_path):
@@ -143,7 +143,7 @@ def test_index_embedding_errors_propagate(tmp_path):
     )
 
     with pytest.raises(RuntimeError, match="document embedding failed"):
-        index._process_file(str(vault), "note.md")
+        index._process_file(str((vault / "note.md").resolve()), str(vault), "note.md")
 
     with pytest.raises(RuntimeError, match="query embedding failed"):
         index.search(query="hello", mode="similarity")
