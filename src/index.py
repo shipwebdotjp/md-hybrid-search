@@ -5,6 +5,8 @@ import re
 import os
 import json
 import hashlib
+import time
+import chromadb
 from .db import Database, SCHEMA_VERSION
 from . import processor
 
@@ -74,6 +76,12 @@ class SearchIndex:
         # Initialize database
         self.db = Database(sqlite_path)
 
+        # Initialize ChromaDB
+        self.chroma_client = chromadb.PersistentClient(path=chroma_path)
+        self.chroma_collection = self.chroma_client.get_or_create_collection(
+            name=collection_name
+        )
+
     def _get_embedder_fingerprint(self) -> str:
         # Gather properties for a deterministic fingerprint
         props = {
@@ -137,6 +145,9 @@ class SearchIndex:
             active_paths.append(source.path)
 
         # Remove sources that are no longer in the list for this collection
+        # This will cascade delete files and chunks in SQLite
+        # But we need to handle ChromaDB cleanup before that if possible,
+        # or find which files were deleted.
         self.db.delete_sources_except(self.collection_name, active_paths)
 
     def _declared_embedding_dim(self) -> Optional[int]:
@@ -224,36 +235,188 @@ class SearchIndex:
             if not Path(source.path).exists():
                 raise FileNotFoundError(f"Source path does not exist: {source.path}")
 
+    def _get_files_on_disk(self) -> dict[str, dict[str, Any]]:
+        """Scans sources and returns a map of resolved file_path to its metadata."""
+        disk_files = {}
+        for source in self.sources:
+            source_path = Path(source.path)
+            # rglob doesn't follow directory symlinks by default
+            for p in source_path.rglob("*.md"):
+                if p.is_file():
+                    try:
+                        resolved_path = p.resolve()
+                        stat = resolved_path.stat()
+                        disk_files[str(resolved_path)] = {
+                            "source_path": str(source_path),
+                            "relative_path": str(p.relative_to(source_path)),
+                            "mtime": stat.st_mtime,
+                            "size": stat.st_size,
+                        }
+                    except (FileNotFoundError, PermissionError):
+                        continue
+        return disk_files
+
+    def _calculate_content_hash(self, file_path: str) -> str:
+        content = processor.load_markdown(file_path)
+        return hashlib.sha256(content.encode()).hexdigest()
+
     def sync(self) -> SyncReport:
         self._check_config_mismatch()
         self._validate_source_existence()
 
-        # Upsert collection metadata on first sync
-        if not self.db.get_collection(self.collection_name):
-            self._sync_collection_metadata()
+        # Identify files that WILL be deleted due to source removal
+        active_source_paths = [s.path for s in self.sources]
 
-        self._sync_sources_to_db()
+        # 1. Get current state
+        disk_files = self._get_files_on_disk()
+        db_files = {f["file_path"]: f for f in self.db.get_files_by_collection(self.collection_name)}
 
-        scanned_files = 0
-        total_chunks = 0
-        for source in self.sources:
-            source_path = Path(source.path)
-            for file_path in sorted(source_path.rglob("*.md"), key=str):
-                if file_path.is_file():
-                    scanned_files += 1
-                    relative_path = str(file_path.relative_to(source_path))
-                    chunks = self._process_file(str(source_path), relative_path)
-                    total_chunks += len(chunks)
+        # 2. Determine changes
+        to_delete = []
+        to_index = []  # List of (file_path, disk_meta, is_update)
+        unchanged_files = 0
+
+        # Add files that were orphaned by source removal BUT are not on disk anymore
+        # (This is a subset of "Files on DB but not on disk")
+        for fp in db_files:
+            if fp not in disk_files:
+                to_delete.append(fp)
+
+        # Files that were orphaned by source removal BUT ARE still on disk via another source
+        # will be handled in the disk loop below (treated as is_update if is_orphaned is True)
+
+        # Files on disk
+        for fp, disk_meta in disk_files.items():
+            if fp not in db_files:
+                to_index.append((fp, disk_meta, False))
+            else:
+                db_meta = db_files[fp]
+                # If the file's stored source_path is no longer active,
+                # we MUST re-index it to re-attach it to an active source.
+                # Otherwise, _sync_sources_to_db() will delete it via cascade.
+                is_orphaned = db_meta["source_path"] not in active_source_paths
+
+                if not is_orphaned and disk_meta["mtime"] == db_meta["mtime"] and disk_meta["size"] == db_meta["size"]:
+                    unchanged_files += 1
+                else:
+                    # Content hash check
+                    content_hash = self._calculate_content_hash(fp)
+                    if not is_orphaned and content_hash == db_meta["content_hash"]:
+                        unchanged_files += 1
+                    else:
+                        to_index.append((fp, disk_meta, True))
+
+        # 3. Prepare data and collect Chroma IDs to delete
+        chroma_ids_to_delete = []
+        # Pre-collect IDs for files to be deleted (including orphaned by source removal)
+        # We must do this BEFORE the database transaction executes deletions
+        for fp in to_delete:
+            chroma_ids_to_delete.extend(self.db.get_chunk_ids_for_file(self.collection_name, fp))
+
+        all_new_chunks = []
+        indexed_files_data = []  # List of (fp, meta, content_hash, chunks, is_update)
+        new_files_count = 0
+        updated_files_count = 0
+        deleted_chunks_count = len(chroma_ids_to_delete)
+
+        for fp, meta, is_update in to_index:
+            if is_update:
+                old_chunk_ids = self.db.get_chunk_ids_for_file(self.collection_name, fp)
+                chroma_ids_to_delete.extend(old_chunk_ids)
+                deleted_chunks_count += len(old_chunk_ids)
+                updated_files_count += 1
+            else:
+                new_files_count += 1
+
+            chunks = self._process_file(fp, meta["source_path"], meta["relative_path"])
+            content_hash = self._calculate_content_hash(fp)
+            indexed_files_data.append((fp, meta, content_hash, chunks, is_update))
+            all_new_chunks.extend(chunks)
+
+        # 4. SQLite Transaction (Unified)
+        with self.db.conn:
+            # Metadata & Sources
+            if not self.db.get_collection(self.collection_name):
+                self._sync_collection_metadata()
+            self._sync_sources_to_db()
+
+            # Execute deletions
+            for fp in to_delete:
+                self.db.delete_file(self.collection_name, fp)
+
+            # Update unchanged but mtime/size changed files
+            # This is safe to do because content_hash matched
+            for fp, disk_meta in disk_files.items():
+                if fp in db_files:
+                    db_meta = db_files[fp]
+                    if disk_meta["mtime"] != db_meta["mtime"] or disk_meta["size"] != db_meta["size"]:
+                        # We only do this if it's considered unchanged (hash matched)
+                        # Re-calculate hash to be absolutely sure if it's not in to_index
+                        content_hash = self._calculate_content_hash(fp)
+                        if content_hash == db_meta["content_hash"]:
+                            self.db.upsert_file({
+                                **db_meta,
+                                "mtime": disk_meta["mtime"],
+                                "size": disk_meta["size"],
+                                "last_indexed_at": time.time()
+                            })
+
+            # Execute indexing
+            for fp, meta, content_hash, chunks, is_update in indexed_files_data:
+                if is_update:
+                    self.db.delete_file(self.collection_name, fp)
+
+                now = time.time()
+                self.db.upsert_file({
+                    "collection_name": self.collection_name,
+                    "file_path": fp,
+                    "source_path": meta["source_path"],
+                    "relative_path": meta["relative_path"],
+                    "mtime": meta["mtime"],
+                    "size": meta["size"],
+                    "content_hash": content_hash,
+                    "last_indexed_at": now
+                })
+
+                for chunk in chunks:
+                    self.db.upsert_chunk({
+                        "chunk_id": chunk.chunk_id,
+                        "collection_name": self.collection_name,
+                        "file_path": fp,
+                        "source_path": meta["source_path"],
+                        "relative_path": meta["relative_path"],
+                        "chunk_index": chunk.chunk_index,
+                        "content": chunk.content,
+                        "content_normalized": processor.normalize_text(chunk.content),
+                        "content_hash": chunk.content_hash,
+                        "token_count": None,
+                        "mtime": meta["mtime"],
+                        "created_at": now
+                    })
+
+        # 5. Chroma Sync (after SQLite commit)
+        if chroma_ids_to_delete:
+            # deduplicate IDs to avoid chromadb.errors.DuplicateIDError
+            unique_ids_to_delete = list(set(chroma_ids_to_delete))
+            self.chroma_collection.delete(ids=unique_ids_to_delete)
+
+        if all_new_chunks:
+            self.chroma_collection.upsert(
+                ids=[c.chunk_id for c in all_new_chunks],
+                embeddings=[c.embedding for c in all_new_chunks],
+                metadatas=[c.metadata for c in all_new_chunks],
+                documents=[c.content for c in all_new_chunks]
+            )
 
         return SyncReport(
             collection_name=self.collection_name,
-            scanned_files=scanned_files,
-            new_files=scanned_files,  # Simplified for this task
-            updated_files=0,
-            unchanged_files=0,
-            deleted_files=0,
-            inserted_chunks=total_chunks,
-            deleted_chunks=0
+            scanned_files=len(disk_files),
+            new_files=new_files_count,
+            updated_files=updated_files_count,
+            unchanged_files=unchanged_files,
+            deleted_files=len(to_delete),
+            inserted_chunks=len(all_new_chunks),
+            deleted_chunks=deleted_chunks_count
         )
 
     def search(
@@ -284,14 +447,17 @@ class SearchIndex:
 
         # Clear existing data for this collection
         self.db.delete_collection(self.collection_name)
+        self.chroma_client.delete_collection(self.collection_name)
+        self.chroma_collection = self.chroma_client.get_or_create_collection(
+            name=self.collection_name
+        )
 
         # Re-initialize collection and sources via sync()
         # sync() will call _sync_collection_metadata() because get_collection() will be None
         return self.sync()
 
-    def _process_file(self, source_path: str, relative_path: str) -> List[processor.Chunk]:
+    def _process_file(self, file_path: str, source_path: str, relative_path: str) -> List[processor.Chunk]:
         """Loads and chunks a single file, preparing it for indexing."""
-        file_path = str(Path(source_path) / relative_path)
         content = processor.load_markdown(file_path)
         content_hash = hashlib.sha256(content.encode()).hexdigest()
         mtime = os.path.getmtime(file_path)
@@ -332,3 +498,7 @@ class SearchIndex:
 
     def clear(self) -> None:
         self.db.delete_collection(self.collection_name)
+        self.chroma_client.delete_collection(self.collection_name)
+        self.chroma_collection = self.chroma_client.get_or_create_collection(
+            name=self.collection_name
+        )
