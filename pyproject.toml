@@ -1,15 +1,54 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "md-hybrid-search"
 version = "0.1.0"
-description = "Add your description here"
+description = "Markdown vaults for hybrid search with SQLite FTS5, ChromaDB, and embeddings"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = [
-    "chromadb>=1.5.9",
-]
 license = { file = "LICENSE" }
+authors = [
+  { name = "shipwebdotjp", email = "ship@shipweb.jp" },
+]
+keywords = [
+  "markdown",
+  "search",
+  "hybrid-search",
+  "sqlite",
+  "fts5",
+  "chromadb",
+  "embedding",
+  "obsidian",
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Topic :: Text Processing :: Indexing",
+  "Topic :: Information Analysis",
+]
+dependencies = [
+  "chromadb>=1.5.9",
+]
 
 [project.optional-dependencies]
 tests = [
-    "pytest>=9.0.3",
+  "pytest>=9.0.3",
 ]
+
+[project.urls]
+Homepage = "https://github.com/shipwebdotjp/md-hybrid-search"
+Repository = "https://github.com/shipwebdotjp/md-hybrid-search"
+Issues = "https://github.com/shipwebdotjp/md-hybrid-search/issues"
+Changelog = "https://github.com/shipwebdotjp/md-hybrid-search/blob/main/doc/decisions.log.md"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["md_hybrid_search*"]
