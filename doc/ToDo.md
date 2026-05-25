@@ -85,25 +85,25 @@
 - [x] 不整合時に `rebuild()` を案内する
 
 ## 10. テスト
-- [ ] `collection_name` のバリデーションテストを書く
-- [ ] `DirectorySource.path` の正規化テストを書く
-- [ ] 重複 source と親子 source のテストを書く
-- [ ] SQLite schema 作成・更新のテストを書く
-- [ ] `chunk_id` 生成と chunking のテストを書く
-- [ ] ファイル追加・変更・削除検出のテストを書く
-- [ ] `sources` 不在と `FileNotFoundError` のテストを書く
-- [ ] FTS / BM25 検索のテストを書く
-- [ ] ChromaDB upsert / delete のテストを書く
-- [ ] hybrid search と RRF のテストを書く
-- [ ] `rebuild()` / `clear()` / config mismatch のテストを書く
-- [ ] `sync()` と `search()` の統合テストを書く
+- [x] `collection_name` のバリデーションテストを書く
+- [x] `DirectorySource.path` の正規化テストを書く
+- [x] 重複 source と親子 source のテストを書く
+- [x] SQLite schema 作成・更新のテストを書く
+- [x] `chunk_id` 生成と chunking のテストを書く
+- [x] ファイル追加・変更・削除検出のテストを書く
+- [x] `sources` 不在と `FileNotFoundError` のテストを書く
+- [x] FTS / BM25 検索のテストを書く
+- [x] ChromaDB upsert / delete のテストを書く
+- [x] hybrid search と RRF のテストを書く
+- [x] `rebuild()` / `clear()` / config mismatch のテストを書く
+- [x] `sync()` と `search()` の統合テストを書く
 
 ## 11. ドキュメント・利用例
-- [ ] 最小構成の `SearchIndex` 生成例を書く
-- [ ] `sync()` / `search()` / `rebuild()` / `clear()` の使用例を書く
-- [ ] 呼び出し元アプリ側の責務を書く
-- [ ] `collection_name` ルールと rebuild が必要な条件を書く
-- [ ] Obsidian Vault を対象にした利用例を書く
+- [x] 最小構成の `SearchIndex` 生成例を書く
+- [x] `sync()` / `search()` / `rebuild()` / `clear()` の使用例を書く
+- [x] 呼び出し元アプリ側の責務を書く
+- [x] `collection_name` ルールと rebuild が必要な条件を書く
+- [x] Obsidian Vault を対象にした利用例を書く
 
 ## 12. v1 対象外として整理
 - [ ] 設定ファイル形式の設計はライブラリ責務から外す

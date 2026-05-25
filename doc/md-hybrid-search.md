@@ -762,31 +762,63 @@ v1 では以下を行わない。
 
 ---
 
-## 17. 使い方の想定
+## 17. 使い方の想定 (Obsidian Vault 向けの例)
+
+Obsidian Vault を対象にした最小限の利用例。
 
 ```python
+import os
+from src.index import SearchIndex, DirectorySource
+
+# 1. 呼び出し元で Embedder を用意 (例: OpenAI)
+class OpenAIEmbedder:
+    def __init__(self, api_key: str):
+        from openai import OpenAI
+        self.client = OpenAI(api_key=api_key)
+        self.model_name = "text-embedding-3-small"
+        self.embedding_dim = 1536
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        res = self.client.embeddings.create(input=texts, model=self.model_name)
+        return [data.embedding for data in res.data]
+
+    def embed_query(self, text: str) -> list[float]:
+        res = self.client.embeddings.create(input=[text], model=self.model_name)
+        return res.data[0].embedding
+
+# 2. SearchIndex の初期化
+vault_path = os.path.expanduser("~/Documents/Obsidian/MyVault")
+app_data_dir = os.path.expanduser("~/Library/Application Support/my-app")
+os.makedirs(app_data_dir, exist_ok=True)
+
 index = SearchIndex(
-    collection_name="main",
-    sources=[
-        DirectorySource("/path/to/vault"),
-        DirectorySource("/path/to/another-dir"),
-    ],
-    sqlite_path="app-data/search.sqlite",
-    chroma_path="app-data/chroma",
-    embedder=embedder,
+    collection_name="my-vault",
+    sources=[DirectorySource(vault_path)],
+    sqlite_path=os.path.join(app_data_dir, "search.sqlite"),
+    chroma_path=os.path.join(app_data_dir, "chroma"),
+    embedder=OpenAIEmbedder(api_key=os.environ["OPENAI_API_KEY"]),
+    chunk_size=1000,
+    chunk_overlap=100
 )
 
-index.sync()
-results = index.search("検索クエリ", limit=10)
+# 3. インデックスの同期 (差分更新)
+report = index.sync()
+print(f"Scanned: {report.scanned_files}, New: {report.new_files}, Deleted: {report.deleted_files}")
+
+# 4. 検索
+hits = index.search("AI search optimization", mode="hybrid", limit=5)
+for hit in hits:
+    print(f"Score: {hit.score:.4f} | Path: {hit.metadata['relative_path']}")
+    # hit.content にはチャンクの本文が含まれる
 ```
 
 この設計で、外部アプリは
 
-- collection を保存する
-- source を保存する
-- embedder を生成する
+- `app_data_dir` の管理
+- `collection_name` と `sources` の管理
+- `embedder` (および API Key) の管理
 
-だけでよい。
+を担当し、ライブラリは検索インデックスの整合性維持とハイブリッド検索アルゴリズムに集中する。
 
 ---
 
