@@ -1,8 +1,8 @@
 import pytest
 import json
 from pathlib import Path
-from src.index import SearchIndex, DirectorySource
-from src.exceptions import ConfigMismatchError
+from md_hybrid_search import SearchIndex, DirectorySource
+from md_hybrid_search import ConfigMismatchError
 from typing import List
 
 class MockEmbedder:
@@ -92,6 +92,6 @@ def test_schema_version_check(index_setup):
     conn.commit()
     conn.close()
 
-    from src.exceptions import IndexCorruptionError
+    from md_hybrid_search import IndexCorruptionError
     with pytest.raises(IndexCorruptionError, match="Invalid or corrupt schema_version"):
         SearchIndex(**params)
