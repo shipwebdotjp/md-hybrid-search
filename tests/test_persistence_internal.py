@@ -3,8 +3,8 @@ import time
 import json
 import tempfile
 from pathlib import Path
-from src.index import SearchIndex, DirectorySource, Embedder
-from src.exceptions import IndexCorruptionError
+from md_hybrid_search import SearchIndex, DirectorySource, Embedder
+from md_hybrid_search import IndexCorruptionError
 
 class MockEmbedder:
     def __init__(self):
@@ -131,7 +131,7 @@ def test_persistence():
         db.conn.commit()
 
         try:
-            from src.db import Database
+            from md_hybrid_search.db import Database
             Database(sqlite_path)
         except IndexCorruptionError as e:
             print(f"Caught expected error: {e}")

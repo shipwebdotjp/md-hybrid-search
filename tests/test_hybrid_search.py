@@ -1,6 +1,6 @@
 import pytest
 from pathlib import Path
-from src.index import SearchIndex, DirectorySource, SearchHit
+from md_hybrid_search import SearchIndex, DirectorySource, SearchHit
 from typing import List
 
 class MockEmbedder:

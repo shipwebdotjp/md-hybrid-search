@@ -1,7 +1,7 @@
 import pytest
 from pathlib import Path
-from src.index import SearchIndex, DirectorySource
-from src.exceptions import EmbeddingError
+from md_hybrid_search import SearchIndex, DirectorySource
+from md_hybrid_search import EmbeddingError
 from typing import List
 
 class MockEmbedder:

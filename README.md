@@ -41,7 +41,7 @@ class MyEmbedder:
 ### 2. Initialize and Sync
 
 ```python
-from src.index import SearchIndex, DirectorySource
+from md_hybrid_search import SearchIndex, DirectorySource
 
 index = SearchIndex(
     collection_name="my-vault",

@@ -3,8 +3,8 @@ import os
 import time
 import sqlite3
 from pathlib import Path
-from src.index import SearchIndex, DirectorySource, SyncReport
-from src.exceptions import EmbeddingError, SourceNotFoundError
+from md_hybrid_search import SearchIndex, DirectorySource, SyncReport
+from md_hybrid_search import EmbeddingError, SourceNotFoundError
 from typing import List
 
 class MockEmbedder:

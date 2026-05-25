@@ -768,7 +768,7 @@ Obsidian Vault を対象にした最小限の利用例。
 
 ```python
 import os
-from src.index import SearchIndex, DirectorySource
+from md_hybrid_search import SearchIndex, DirectorySource
 
 # 1. 呼び出し元で Embedder を用意 (例: OpenAI)
 class OpenAIEmbedder:

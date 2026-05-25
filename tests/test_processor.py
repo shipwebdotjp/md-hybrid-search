@@ -1,6 +1,6 @@
 import os
 import pytest
-from src.processor import load_markdown, chunk_text, generate_chunk_id, normalize_text, Chunk
+from md_hybrid_search.processor import load_markdown, chunk_text, generate_chunk_id, normalize_text, Chunk
 
 def test_load_markdown(tmp_path):
     content = "---\ntitle: Test\n---\nBody content."
