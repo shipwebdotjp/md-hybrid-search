@@ -1,6 +1,7 @@
 import pytest
 from pathlib import Path
 from src.index import SearchIndex, DirectorySource
+from src.exceptions import EmbeddingError
 from typing import List
 
 class MockEmbedder:
@@ -142,8 +143,8 @@ def test_index_embedding_errors_propagate(tmp_path):
         embedder=FailingEmbedder(),
     )
 
-    with pytest.raises(RuntimeError, match="document embedding failed"):
+    with pytest.raises(EmbeddingError, match="document embedding failed"):
         index._process_file(str((vault / "note.md").resolve()), str(vault), "note.md")
 
-    with pytest.raises(RuntimeError, match="query embedding failed"):
+    with pytest.raises(EmbeddingError, match="query embedding failed"):
         index.search(query="hello", mode="similarity")

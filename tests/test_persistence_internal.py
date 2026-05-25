@@ -4,6 +4,7 @@ import json
 import tempfile
 from pathlib import Path
 from src.index import SearchIndex, DirectorySource, Embedder
+from src.exceptions import IndexCorruptionError
 
 class MockEmbedder:
     def __init__(self):
@@ -132,10 +133,10 @@ def test_persistence():
         try:
             from src.db import Database
             Database(sqlite_path)
-        except RuntimeError as e:
+        except IndexCorruptionError as e:
             print(f"Caught expected error: {e}")
         else:
-            raise AssertionError("Should have raised RuntimeError for schema mismatch")
+            raise AssertionError("Should have raised error for schema mismatch")
 
 if __name__ == "__main__":
     test_persistence()

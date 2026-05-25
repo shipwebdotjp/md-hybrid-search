@@ -2,6 +2,7 @@ import sqlite3
 import json
 import time
 from typing import Optional, List, Dict, Any
+from .exceptions import IndexCorruptionError
 
 SCHEMA_VERSION = 2
 
@@ -107,7 +108,7 @@ class Database:
             # If schema_meta is missing, ensure the DB is empty.
             cursor = self.conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
             if cursor.fetchone():
-                 raise RuntimeError(
+                 raise IndexCorruptionError(
                     "Existing database found without schema version information. "
                     "To prevent corruption, automatic initialization is blocked. Please rebuild the index."
                 )
@@ -116,14 +117,22 @@ class Database:
         cursor = self.conn.execute("SELECT value FROM schema_meta WHERE key = 'schema_version'")
         row = cursor.fetchone()
         if not row:
-            raise RuntimeError(
+            raise IndexCorruptionError(
                 "schema_meta table exists but schema_version is missing. "
                 "The database may be corrupted. Please rebuild the index."
             )
 
-        version = int(row['value'])
+        try:
+            version_str = row['value']
+            version = int(version_str)
+        except (ValueError, TypeError) as e:
+            raise IndexCorruptionError(
+                f"Invalid or corrupt schema_version in database: '{row['value']}'. "
+                f"Original error: {e}. Please rebuild the index."
+            ) from e
+
         if version != SCHEMA_VERSION:
-            raise RuntimeError(
+            raise IndexCorruptionError(
                 f"Schema version mismatch: database has v{version}, but code expects v{SCHEMA_VERSION}. "
                 "Automatic migration is not supported. Please rebuild the index."
             )
@@ -145,10 +154,11 @@ class Database:
         return dict(row) if row else None
 
     def delete_collection(self, name: str):
-        # Delete from chunks_fts (virtual table, no CASCADE)
-        self.conn.execute("DELETE FROM chunks_fts WHERE collection_name = ?", (name,))
-        # This will cascade delete sources, files, and chunks
-        self.conn.execute("DELETE FROM collections WHERE collection_name = ?", (name,))
+        with self.conn:
+            # Delete from chunks_fts (virtual table, no CASCADE)
+            self.conn.execute("DELETE FROM chunks_fts WHERE collection_name = ?", (name,))
+            # This will cascade delete sources, files, and chunks
+            self.conn.execute("DELETE FROM collections WHERE collection_name = ?", (name,))
 
     # Source CRUD
     def upsert_source(self, collection_name: str, source_path: str):
