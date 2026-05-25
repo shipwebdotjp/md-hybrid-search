@@ -32,7 +32,7 @@ def index_setup(tmp_path):
     return params, vault
 
 def test_rebuild_and_clear(index_setup):
-    params, vault = index_setup
+    params, _vault = index_setup
     index = SearchIndex(**params)
 
     # Sync first
@@ -54,7 +54,7 @@ def test_rebuild_and_clear(index_setup):
     assert len(index.search("content", mode="similarity")) == 1
 
 def test_config_mismatch_chunk_size(index_setup):
-    params, vault = index_setup
+    params, _vault = index_setup
     index = SearchIndex(**params)
     index.sync()
 
@@ -69,7 +69,7 @@ def test_config_mismatch_chunk_size(index_setup):
         index2.search("query")
 
 def test_config_mismatch_embedder(index_setup):
-    params, vault = index_setup
+    params, _vault = index_setup
     index = SearchIndex(**params)
     index.sync()
 
@@ -81,7 +81,7 @@ def test_config_mismatch_embedder(index_setup):
         index2.sync()
 
 def test_schema_version_check(index_setup):
-    params, vault = index_setup
+    params, _vault = index_setup
     index = SearchIndex(**params)
     index.sync()
 

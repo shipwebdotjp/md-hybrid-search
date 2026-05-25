@@ -69,7 +69,7 @@ def test_hybrid_search_rrf(hybrid_index):
     # Our implementation uses 0-based index for rank in loop: 1/(k + i + 1)
     # so rank 1 (i=0) is 1/(60+1).
     assert results[0].score > 0
-    assert results[0].score > results[-1].score
+    assert all(results[i].score >= results[i+1].score for i in range(len(results)-1))
 
 def test_hybrid_search_deduplication(hybrid_index):
     # note1 matches both keyword and similarity

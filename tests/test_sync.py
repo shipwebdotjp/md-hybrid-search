@@ -235,8 +235,6 @@ def test_sync_shared_file_source_removal(tmp_path):
     assert report2.updated_files == 1
     assert report2.deleted_files == 0
 
-    conn = sqlite3.connect(params["sqlite_path"])
-
 def test_sync_mtime_change_same_content(index_params):
     # Tests that sync detects mtime change but avoids re-indexing if content hash is same
     vault_path = Path(index_params["sources"][0].path)
