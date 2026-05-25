@@ -277,5 +277,17 @@ class Database:
         cursor = self.conn.execute("SELECT chunk_id FROM chunks WHERE collection_name = ? AND file_path = ?", (collection_name, file_path))
         return [row['chunk_id'] for row in cursor.fetchall()]
 
+    def keyword_search(self, collection_name: str, query: str, limit: int) -> List[Dict[str, Any]]:
+        sql = """
+            SELECT c.*
+            FROM chunks c
+            JOIN chunks_fts f ON c.chunk_id = f.chunk_id
+            WHERE f.collection_name = ? AND f.content MATCH ?
+            ORDER BY f.rank
+            LIMIT ?
+        """
+        cursor = self.conn.execute(sql, (collection_name, query, limit))
+        return [dict(row) for row in cursor.fetchall()]
+
     def close(self):
         self.conn.close()
