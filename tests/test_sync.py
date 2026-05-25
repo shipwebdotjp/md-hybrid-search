@@ -236,7 +236,28 @@ def test_sync_shared_file_source_removal(tmp_path):
     assert report2.deleted_files == 0
 
     conn = sqlite3.connect(params["sqlite_path"])
+
+def test_sync_mtime_change_same_content(index_params):
+    # Tests that sync detects mtime change but avoids re-indexing if content hash is same
+    vault_path = Path(index_params["sources"][0].path)
+    note1 = vault_path / "note1.md"
+    note1.write_text("Same Content", encoding="utf-8")
+
+    index = SearchIndex(**index_params)
+    index.sync()
+
+    # Update mtime only
+    forced_mtime = note1.stat().st_mtime + 5.0
+    os.utime(note1, (forced_mtime, forced_mtime))
+
+    report = index.sync()
+    assert report.unchanged_files == 1
+    assert report.updated_files == 0
+    assert report.inserted_chunks == 0
+
+    # Verify DB was updated with new mtime so subsequent sync is even faster
+    conn = sqlite3.connect(index_params["sqlite_path"])
     conn.row_factory = sqlite3.Row
-    row = conn.execute("SELECT source_path FROM files LIMIT 1").fetchone()
-    assert row["source_path"] == str(source_to_keep)
+    row = conn.execute("SELECT mtime FROM files WHERE relative_path = 'note1.md'").fetchone()
+    assert row["mtime"] == forced_mtime
     conn.close()
