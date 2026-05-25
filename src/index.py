@@ -419,6 +419,20 @@ class SearchIndex:
             deleted_chunks=deleted_chunks_count
         )
 
+    def _keyword_search_raw(self, query: str, limit: int) -> List[dict[str, Any]]:
+        tokenized_query = processor.tokenize_query(query)
+        if not tokenized_query:
+            return []
+        return self.db.keyword_search(self.collection_name, tokenized_query, limit)
+
+    def _similarity_search_raw(self, query: str, limit: int) -> dict[str, Any]:
+        embedding = self._embed_query(query)
+        return self.chroma_collection.query(
+            query_embeddings=[embedding],
+            n_results=limit,
+            include=["documents", "metadatas"]
+        )
+
     def search(
         self,
         query: str,
@@ -437,14 +451,8 @@ class SearchIndex:
         if mode not in valid_modes:
             raise ValueError(f"Invalid mode: {mode}. Must be one of {valid_modes}")
 
-        if mode in ("similarity", "hybrid"):
-            self._embed_query(query)
-
         if mode == "keyword":
-            tokenized_query = processor.tokenize_query(query)
-            if tokenized_query is None:
-                return []
-            rows = self.db.keyword_search(self.collection_name, tokenized_query, limit)
+            rows = self._keyword_search_raw(query, limit)
             hits = []
             for i, row in enumerate(rows):
                 hits.append(SearchHit(
@@ -461,6 +469,76 @@ class SearchIndex:
                         "mtime": row["mtime"],
                         "content_hash": row["content_hash"],
                     }
+                ))
+            return hits
+
+        if mode == "similarity":
+            results = self._similarity_search_raw(query, limit)
+            hits = []
+            if results["ids"] and results["ids"][0]:
+                ids = results["ids"][0]
+                documents = results["documents"][0]
+                metadatas = results["metadatas"][0]
+                for i, (chunk_id, doc, meta) in enumerate(zip(ids, documents, metadatas)):
+                    hits.append(SearchHit(
+                        chunk_id=chunk_id,
+                        score=1.0 / (i + 1),
+                        mode="similarity",
+                        content=doc,
+                        metadata=meta
+                    ))
+            return hits
+
+        if mode == "hybrid":
+            candidate_limit = max(limit * 5, 50)
+
+            # Keyword candidates
+            kw_rows = self._keyword_search_raw(query, candidate_limit)
+
+            # Similarity candidates
+            sim_results = self._similarity_search_raw(query, candidate_limit)
+
+            # RRF
+            k = 60
+            scores = {}  # chunk_id -> score
+            chunk_data = {}  # chunk_id -> (content, metadata)
+
+            for i, row in enumerate(kw_rows):
+                cid = row["chunk_id"]
+                scores[cid] = scores.get(cid, 0) + 1.0 / (k + i + 1)
+                if cid not in chunk_data:
+                    chunk_data[cid] = (row["content"], {
+                        "collection_name": row["collection_name"],
+                        "source_path": row["source_path"],
+                        "file_path": row["file_path"],
+                        "relative_path": row["relative_path"],
+                        "chunk_index": row["chunk_index"],
+                        "mtime": row["mtime"],
+                        "content_hash": row["content_hash"],
+                    })
+
+            if sim_results["ids"] and sim_results["ids"][0]:
+                ids = sim_results["ids"][0]
+                documents = sim_results["documents"][0]
+                metadatas = sim_results["metadatas"][0]
+                for i, (cid, doc, meta) in enumerate(zip(ids, documents, metadatas)):
+                    scores[cid] = scores.get(cid, 0) + 1.0 / (k + i + 1)
+                    if cid not in chunk_data:
+                        chunk_data[cid] = (doc, meta)
+
+            # Sort and return
+            sorted_ids = sorted(scores.keys(), key=lambda cid: scores[cid], reverse=True)
+            top_ids = sorted_ids[:limit]
+
+            hits = []
+            for cid in top_ids:
+                content, metadata = chunk_data[cid]
+                hits.append(SearchHit(
+                    chunk_id=cid,
+                    score=scores[cid],
+                    mode="hybrid",
+                    content=content,
+                    metadata=metadata
                 ))
             return hits
 
