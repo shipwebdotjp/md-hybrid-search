@@ -9,12 +9,13 @@ import time
 import chromadb
 from .db import Database, SCHEMA_VERSION
 from . import processor
-
-class MdHybridSearchError(Exception):
-    pass
-
-class ConfigMismatchError(MdHybridSearchError):
-    pass
+from .exceptions import (
+    MdHybridSearchError,
+    ConfigMismatchError,
+    IndexCorruptionError,
+    EmbeddingError,
+    SourceNotFoundError,
+)
 
 @dataclass(frozen=True)
 class DirectorySource:
@@ -102,24 +103,37 @@ class SearchIndex:
         serialized = json.dumps(props, sort_keys=True)
         return hashlib.sha256(serialized.encode()).hexdigest()
 
-    def _check_config_mismatch(self):
+    def _check_config_mismatch(self) -> None:
+        """
+        Checks if the current configuration matches the persisted metadata in the database.
+        Raises ConfigMismatchError if there is a divergence.
+        """
         coll_data = self.db.get_collection(self.collection_name)
         if not coll_data:
             return
 
-        stored_meta = json.loads(coll_data["metadata_json"])
+        try:
+            stored_meta = json.loads(coll_data["metadata_json"])
+        except (json.JSONDecodeError, TypeError):
+            # If metadata is corrupted, we should probably treat it as a mismatch
+            # but for now let's just assume it's a mismatch that requires rebuild.
+            raise ConfigMismatchError(
+                f"Collection '{self.collection_name}' has corrupted metadata. "
+                "Please run rebuild() to re-index."
+            )
+
         current_meta = {
             "chunk_size": self.chunk_size,
             "chunk_overlap": self.chunk_overlap,
             "embedder_fingerprint": self._get_embedder_fingerprint(),
             "tokenizer_fingerprint": self._get_tokenizer_fingerprint(),
-            "schema_version": SCHEMA_VERSION,
         }
 
         mismatches = []
-        for key in ["chunk_size", "chunk_overlap", "embedder_fingerprint", "tokenizer_fingerprint"]:
-            if stored_meta.get(key) != current_meta.get(key):
-                mismatches.append(f"{key} (stored: {stored_meta.get(key)}, current: {current_meta.get(key)})")
+        for key, current_val in current_meta.items():
+            stored_val = stored_meta.get(key)
+            if stored_val != current_val:
+                mismatches.append(f"{key} (stored: {stored_val}, current: {current_val})")
 
         if mismatches:
             raise ConfigMismatchError(
@@ -181,9 +195,13 @@ class SearchIndex:
         if not texts:
             return []
 
-        embeddings = list(self.embedder.embed_documents(texts))
+        try:
+            embeddings = list(self.embedder.embed_documents(texts))
+        except Exception as e:
+            raise EmbeddingError(f"Error generating document embeddings: {e}") from e
+
         if len(embeddings) != len(texts):
-            raise ValueError(
+            raise EmbeddingError(
                 f"embed_documents returned {len(embeddings)} embeddings for {len(texts)} texts"
             )
 
@@ -196,7 +214,11 @@ class SearchIndex:
         return normalized_embeddings
 
     def _embed_query(self, text: str) -> List[float]:
-        embedding = list(self.embedder.embed_query(text))
+        try:
+            embedding = list(self.embedder.embed_query(text))
+        except Exception as e:
+            raise EmbeddingError(f"Error generating query embedding: {e}") from e
+
         self._record_embedding_dim(len(embedding))
         return embedding
 
@@ -233,7 +255,7 @@ class SearchIndex:
 
         for source in self.sources:
             if not Path(source.path).exists():
-                raise FileNotFoundError(f"Source path does not exist: {source.path}")
+                raise SourceNotFoundError(f"Source path does not exist: {source.path}")
 
     def _get_files_on_disk(self) -> dict[str, dict[str, Any]]:
         """Scans sources and returns a map of resolved file_path to its metadata."""
@@ -545,11 +567,20 @@ class SearchIndex:
         return []
 
     def rebuild(self) -> SyncReport:
+        """
+        Deletes all index state for the collection in SQLite and ChromaDB,
+        then re-indexes from the current sources.
+        """
         self._validate_source_existence()
 
         # Clear existing data for this collection
         self.db.delete_collection(self.collection_name)
-        self.chroma_client.delete_collection(self.collection_name)
+        try:
+            self.chroma_client.delete_collection(self.collection_name)
+        except Exception:
+            # If collection didn't exist in Chroma, ignore error
+            pass
+
         self.chroma_collection = self.chroma_client.get_or_create_collection(
             name=self.collection_name
         )
@@ -599,8 +630,15 @@ class SearchIndex:
         return chunks
 
     def clear(self) -> None:
+        """
+        Removes all index state for the collection from SQLite and ChromaDB.
+        Does NOT delete any Markdown files from disk.
+        """
         self.db.delete_collection(self.collection_name)
-        self.chroma_client.delete_collection(self.collection_name)
+        try:
+            self.chroma_client.delete_collection(self.collection_name)
+        except Exception:
+            pass
         self.chroma_collection = self.chroma_client.get_or_create_collection(
             name=self.collection_name
         )

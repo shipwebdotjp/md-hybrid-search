@@ -77,12 +77,12 @@
 - [ ] `SearchHit.metadata` に必要な項目を含める
 
 ## 9. Rebuild / Clear / エラー処理
-- [ ] `rebuild()` を実装する
-- [ ] `clear()` を実装する
-- [ ] 保存済み設定と現在設定の不一致を検出する
-- [ ] `ConfigMismatchError` を送出する方針を実装する
-- [ ] schema version 不一致時のエラー方針を実装する
-- [ ] 不整合時に `rebuild()` を案内する
+- [x] `rebuild()` を実装する
+- [x] `clear()` を実装する
+- [x] 保存済み設定と現在設定の不一致を検出する
+- [x] `ConfigMismatchError` を送出する方針を実装する
+- [x] schema version 不一致時のエラー方針を実装する
+- [x] 不整合時に `rebuild()` を案内する
 
 ## 10. テスト
 - [ ] `collection_name` のバリデーションテストを書く
