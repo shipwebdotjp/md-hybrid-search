@@ -31,7 +31,8 @@
 - [x] heading-aware chunking を行わない
 - [x] `chunk_id` を `collection_name` / `file_path` / `chunk_index` / `content_hash` から決定的に生成する
 - [x] chunk に必要なメタデータを定義する
-- [X] FTS 用の正規化テキストと query 正規化を実装する
+- [x] FTS 用の正規化テキストと query 正規化を実装する
+- [x] Tokenizer を導入し MeCab/Regex fallback を実装する
 
 ## 4. Embedding
 - [x] 呼び出し元から渡された embedder で document embedding を生成する

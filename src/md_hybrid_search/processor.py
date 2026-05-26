@@ -3,6 +3,7 @@ import re
 import json
 from typing import List, Any, Optional
 from dataclasses import dataclass, asdict
+from .tokenizer import get_tokenizer
 
 @dataclass(frozen=True)
 class Chunk:
@@ -62,22 +63,20 @@ def generate_chunk_id(collection_name: str, file_path: str, chunk_index: int, co
 
 def normalize_text(text: str) -> str:
     """
-    Basic normalization for FTS indexing.
-    Lowercases and collapses whitespace.
+    Normalization for FTS indexing using the common tokenizer.
     """
-    # Simple normalization: lowercase and whitespace collapse
-    # In a real-world scenario, this might involve more complex CJK tokenization
-    normalized = text.lower()
-    normalized = re.sub(r'\s+', ' ', normalized).strip()
-    return normalized
+    return get_tokenizer().normalize(text)
 
 def tokenize_query(query: str) -> Optional[str]:
     """
     Tokenizes and quotes query terms to avoid FTS5 syntax errors.
-    Extracts alphanumeric tokens and joins them with quotes.
+    Uses the same normalization as indexing and returns quoted tokens.
     Returns None if no tokens are found.
     """
-    tokens = re.findall(r'\w+', query)
+    normalized = normalize_text(query)
+    # Split by whitespace to get tokens
+    tokens = normalized.split()
     if not tokens:
         return None
+    # Quote each token to avoid FTS5 syntax issues and join them
     return ' '.join(f'"{token}"' for token in tokens)
