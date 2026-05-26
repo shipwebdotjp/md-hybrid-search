@@ -222,6 +222,36 @@ class SearchIndex:
         self._record_embedding_dim(len(embedding))
         return embedding
 
+    def _chroma_upsert(self, chunks: List[processor.Chunk]):
+        """
+        Upserts chunks to ChromaDB in batches to avoid exceeding the max batch size.
+        """
+        if not chunks:
+            return
+
+        max_batch_size = self.chroma_client.get_max_batch_size()
+        for i in range(0, len(chunks), max_batch_size):
+            batch = chunks[i : i + max_batch_size]
+            self.chroma_collection.upsert(
+                ids=[c.chunk_id for c in batch],
+                embeddings=[c.embedding for c in batch],
+                metadatas=[c.metadata for c in batch],
+                documents=[c.content for c in batch],
+            )
+
+    def _chroma_delete(self, ids: List[str]):
+        """
+        Deletes IDs from ChromaDB in batches to avoid exceeding the max batch size.
+        """
+        if not ids:
+            return
+
+        unique_ids = list(set(ids))
+        max_batch_size = self.chroma_client.get_max_batch_size()
+        for i in range(0, len(unique_ids), max_batch_size):
+            batch = unique_ids[i : i + max_batch_size]
+            self.chroma_collection.delete(ids=batch)
+
     def _validate_collection_name(self, name: str):
         if not (3 <= len(name) <= 63):
             raise ValueError(f"collection_name must be between 3 and 63 characters: {name}")
@@ -335,11 +365,11 @@ class SearchIndex:
         for fp in to_delete:
             chroma_ids_to_delete.extend(self.db.get_chunk_ids_for_file(self.collection_name, fp))
 
-        all_new_chunks = []
         indexed_files_data = []  # List of (fp, meta, content_hash, chunks, is_update)
         new_files_count = 0
         updated_files_count = 0
         deleted_chunks_count = len(chroma_ids_to_delete)
+        total_inserted_chunks = 0
 
         for fp, meta, is_update in to_index:
             if is_update:
@@ -353,7 +383,7 @@ class SearchIndex:
             chunks = self._process_file(fp, meta["source_path"], meta["relative_path"])
             content_hash = self._calculate_content_hash(fp)
             indexed_files_data.append((fp, meta, content_hash, chunks, is_update))
-            all_new_chunks.extend(chunks)
+            total_inserted_chunks += len(chunks)
 
         # 4. SQLite Transaction (Unified)
         with self.db.conn:
@@ -417,17 +447,10 @@ class SearchIndex:
 
         # 5. Chroma Sync (after SQLite commit)
         if chroma_ids_to_delete:
-            # deduplicate IDs to avoid chromadb.errors.DuplicateIDError
-            unique_ids_to_delete = list(set(chroma_ids_to_delete))
-            self.chroma_collection.delete(ids=unique_ids_to_delete)
+            self._chroma_delete(chroma_ids_to_delete)
 
-        if all_new_chunks:
-            self.chroma_collection.upsert(
-                ids=[c.chunk_id for c in all_new_chunks],
-                embeddings=[c.embedding for c in all_new_chunks],
-                metadatas=[c.metadata for c in all_new_chunks],
-                documents=[c.content for c in all_new_chunks]
-            )
+        for _, _, _, chunks, _ in indexed_files_data:
+            self._chroma_upsert(chunks)
 
         return SyncReport(
             collection_name=self.collection_name,
@@ -436,7 +459,7 @@ class SearchIndex:
             updated_files=updated_files_count,
             unchanged_files=unchanged_files,
             deleted_files=len(to_delete),
-            inserted_chunks=len(all_new_chunks),
+            inserted_chunks=total_inserted_chunks,
             deleted_chunks=deleted_chunks_count
         )
 
