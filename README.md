@@ -51,6 +51,8 @@ index = SearchIndex(
     sqlite_path="data/search.sqlite",
     chroma_path="data/chroma",
     embedder=MyEmbedder(),
+    chunk_size=1000,    # Optional: characters per chunk
+    chunk_overlap=100,  # Optional: overlap between chunks
 )
 
 # Synchronize index with local files
