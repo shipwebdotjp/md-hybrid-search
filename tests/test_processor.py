@@ -49,7 +49,8 @@ def test_generate_chunk_id():
 def test_normalize_text():
     text = "  Hello   WORLD! \n New line. "
     normalized = normalize_text(text)
-    assert normalized == "hello world! new line."
+    # The new RegexTokenizer removes punctuation like ! and .
+    assert normalized == "hello world new line"
 
     # CJK and mixed
     text_cjk = "こんにちは  世界\nHello WORLD"
