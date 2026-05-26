@@ -96,8 +96,9 @@ class SearchIndex:
 
     def _get_tokenizer_fingerprint(self) -> str:
         # Gather properties for a deterministic fingerprint
+        tokenizer = processor.get_tokenizer()
         props = {
-            "name": "standard",
+            "class": tokenizer.__class__.__name__,
             "version": "v1"
         }
         serialized = json.dumps(props, sort_keys=True)
